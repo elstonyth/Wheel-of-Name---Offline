@@ -33,6 +33,30 @@ async function startServer() {
       res.end('window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){/* offline */};');
       return;
     }
+    if (safePath === '/won-expose-engine.js') {
+      try {
+        const exposePath = path.join(__dirname, 'won-expose-engine.js');
+        const script = fs.readFileSync(exposePath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end(script);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('/* failed to load won-expose-engine */');
+      }
+      return;
+    }
+    if (safePath === '/won-spin.js') {
+      try {
+        const spinPath = path.join(__dirname, 'won-spin.js');
+        const script = fs.readFileSync(spinPath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end(script);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('/* failed to load won-spin */');
+      }
+      return;
+    }
     if (safePath.startsWith('/assets/DesktopAd')) {
       const isCss = safePath.endsWith('.css');
       res.writeHead(200, { 'Content-Type': isCss ? 'text/css' : 'application/javascript' });
@@ -89,10 +113,11 @@ async function startServer() {
           if (ext === '.html') {
             const inject = "<script>!function(){try{const o=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{if(n==='href'&&typeof v==='string'&&v.includes('fonts.googleapis.com')){v='/assets/fonts/googlefonts.css'}if(n==='src'&&typeof v==='string'&&v.includes('www.googletagmanager.com/gtag/js')){v='/offline/gtag-stub.js'}}catch(e){}return o.call(this,n,v)};const a=Element.prototype.appendChild;Element.prototype.appendChild=function(node){try{if(node&&node.tagName==='LINK'){const h=node.getAttribute('href')||'';if(h.includes('fonts.googleapis.com')){node.setAttribute('href','/assets/fonts/googlefonts.css')}}if(node&&node.tagName==='SCRIPT'){const s=node.getAttribute('src')||'';if(s&&s.includes('www.googletagmanager.com/gtag/js')){node.setAttribute('src','/offline/gtag-stub.js')}}}catch(e){}return a.call(this,node)};var of=window.fetch;window.fetch=function(r,opts){try{var u=typeof r==='string'?r:r&&r.url;if(u&&u.indexOf('/api/v2/client-settings')!==-1){return Promise.resolve(new Response(JSON.stringify({ads:{enabled:false},features:{},version:1}),{status:200,headers:{'Content-Type':'application/json'}}))}}catch(e){}return of.apply(this,arguments)};window.gtag=window.gtag||function(){}}catch(e){}}();</script>";
             const inject2 = "<script>(function(){function fix(){try{var h=document.querySelector('.q-toolbar__title h1');if(h)h.textContent='wheelofnames.com';document.querySelectorAll('.build').forEach(function(x){x.textContent='f93a / f93a'});}catch(e){}}function schedule(){fix();setTimeout(fix,500);setTimeout(fix,1500);setTimeout(fix,3000);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',schedule);}else{schedule();}})();</script>";
+            const inject3 = "<script type=\"module\" src=\"/won-expose-engine.js\"></script><script type=\"module\" src=\"/won-spin.js\"></script>";
             if (text.indexOf('</head>') !== -1) {
-              text = text.replace('</head>', inject + inject2 + '</head>');
+              text = text.replace('</head>', inject + inject2 + inject3 + '</head>');
             } else {
-              text = inject + inject2 + text;
+              text = inject + inject2 + inject3 + text;
             }
           }
           body = Buffer.from(text, 'utf8');
