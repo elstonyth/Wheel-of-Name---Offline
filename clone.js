@@ -15,16 +15,20 @@ const OUTPUT_DIR = 'cloned-site-offline';
 // ────────────────────────────────
 async function startServer() {
   const preferred = process.env.PORT ? Number(process.env.PORT) : 8080;
-  let currentPort = preferred;
-  const maxSteps = 20;
-  let attempts = 0;
+  const currentPort = preferred;
   const server = http.createServer((req, res) => {
     const safePath = decodeURIComponent(req.url.split('?')[0]);
     
     // Offline stubs and API
     if (safePath.startsWith('/api/v2/client-settings')) {
+      const clientSettings = {
+        version: 1,
+        spinsPerSecond: 1,
+        ads: { enabled: false },
+        features: {}
+      };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ads: { enabled: false }, features: {}, version: 1 }));
+      res.end(JSON.stringify(clientSettings));
       return;
     }
 
@@ -64,8 +68,8 @@ async function startServer() {
       return;
     }
 
-    // Handle hashed preload script if present at site root
-    if (/^\/aC-[A-Za-z0-9_.=-]+$/.test(safePath)) {
+    // Handle hashed preload scripts served at the site root
+    if (/^\/[A-Za-z0-9_.=-]{12,}$/.test(safePath)) {
       res.writeHead(200, { 'Content-Type': 'application/javascript' });
       res.end('');
       return;
@@ -132,19 +136,12 @@ async function startServer() {
   });
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
-      if (attempts < maxSteps) {
-        const tried = currentPort;
-        attempts += 1;
-        currentPort = preferred + attempts;
-        console.warn(`Port ${tried} in use, trying ${currentPort}...`);
-        setTimeout(() => server.listen(currentPort), 100);
-        return;
-      }
-      console.warn('All preferred ports appear busy; trying ephemeral port...');
-      setTimeout(() => server.listen(0), 100);
+      console.error(`Port ${currentPort} is already in use. Please stop the other process or change the PORT environment variable.`);
+      process.exit(1);
       return;
     }
     console.error('Server error:', err);
+    process.exit(1);
   });
 
   server.listen(currentPort, () => {

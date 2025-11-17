@@ -1,0 +1,16 @@
+=== Wheel of Names Offline launch 20251117-011434 ===
+[2025-11-17 01:14:35] [INFO] Initializing launcher (host=wheelofnames.local, node port=8080).
+[2025-11-17 01:14:35] [INFO] Node dependencies detected.
+[2025-11-17 01:14:35] [INFO] Using Caddy binary: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\caddy.exe
+[2025-11-17 01:14:35] [INFO] Adding hosts file entry for wheelofnames.local (requires Administrator).
+[2025-11-17 01:14:36] [INFO] Hosts file already included wheelofnames.local (no change).
+[2025-11-17 01:14:37] [INFO] Node preview server is available on port 8080.
+[2025-11-17 01:14:37] [INFO] HTTP port for Caddy is available on port 8081.
+[2025-11-17 01:14:37] [INFO] HTTPS port for Caddy is available on port 8443.
+[2025-11-17 01:14:37] [INFO] Starting Node server (log file: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\node-server-20251117-011434.log).
+[2025-11-17 01:14:38] [INFO] Node server started (PID 7596).
+[2025-11-17 01:14:38] [INFO] Waiting for Node server (port 8080) to accept connections...
+[2025-11-17 01:14:39] [INFO] Node server is ready.
+[2025-11-17 01:14:39] [INFO] Starting Caddy reverse proxy (log file: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\caddy-20251117-011434.log).
+[2025-11-17 01:14:39] [INFO] Caddy started (PID 16536).
+[2025-11-17 01:14:40] [INFO] Waiting for Caddy HTTPS endpoint (port 8443) to accept connections...

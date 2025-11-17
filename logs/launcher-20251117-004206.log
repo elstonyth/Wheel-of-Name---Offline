@@ -1,0 +1,19 @@
+=== Wheel of Names Offline launch 20251117-004206 ===
+[2025-11-17 00:42:07] [INFO] Initializing launcher (host=wheelofnames.local, node port=8080).
+[2025-11-17 00:42:07] [INFO] Node dependencies detected.
+[2025-11-17 00:42:07] [INFO] Using Caddy binary: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\caddy.exe
+[2025-11-17 00:42:07] [WARN] Hosts file is missing wheelofnames.local. Run this script as Administrator or add '127.0.0.1 wheelofnames.local' manually.
+[2025-11-17 00:42:08] [INFO] Node preview server is available on port 8080.
+[2025-11-17 00:42:08] [INFO] HTTP port for Caddy is available on port 80.
+[2025-11-17 00:42:08] [INFO] HTTPS port for Caddy is available on port 443.
+[2025-11-17 00:42:09] [ERROR] Failed to launch Node server: 
+[2025-11-17 00:42:09] [ERROR] This command cannot be run because "RedirectStandardOutput" and "RedirectStandardError" are same. Give different inputs and Run your command again.
+[2025-11-17 00:42:09] [ERROR] Node PID file was empty.
+[2025-11-17 00:42:10] [INFO] Node server started (PID ).
+[2025-11-17 00:42:10] [ERROR] Failed to launch Caddy: 
+[2025-11-17 00:42:10] [ERROR] This command cannot be run because "RedirectStandardOutput" and "RedirectStandardError" are same. Give different inputs and Run your command again.
+[2025-11-17 00:42:11] [ERROR] Caddy PID file was empty.
+[2025-11-17 00:42:11] [INFO] Caddy started (PID ).
+[2025-11-17 00:42:11] [INFO] Waiting for Node server (port 8080) to accept connections...
+[2025-11-17 00:42:12] [INFO] Node server is ready.
+[2025-11-17 00:42:12] [INFO] Waiting for Caddy HTTPS endpoint (port 443) to accept connections...

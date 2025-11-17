@@ -1,0 +1,24 @@
+=== Wheel of Names Offline launch 20251117-010650 ===
+[2025-11-17 01:06:50] [INFO] Initializing launcher (host=wheelofnames.local, node port=8080).
+[2025-11-17 01:06:51] [INFO] Node dependencies detected.
+[2025-11-17 01:06:51] [INFO] Using Caddy binary: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\caddy.exe
+[2025-11-17 01:06:51] [INFO] Adding hosts file entry for wheelofnames.local (requires Administrator).
+[2025-11-17 01:06:52] [INFO] Hosts file already included wheelofnames.local (no change).
+[2025-11-17 01:06:52] [INFO] Node preview server is available on port 8080.
+[2025-11-17 01:06:53] [INFO] HTTP port for Caddy is available on port 8081.
+[2025-11-17 01:06:53] [INFO] HTTPS port for Caddy is available on port 8443.
+[2025-11-17 01:06:53] [INFO] Starting Node server (log file: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\node-server-20251117-010650.log).
+[2025-11-17 01:06:54] [ERROR] Failed to launch Node server: 
+[2025-11-17 01:06:54] [ERROR] This command cannot be run because "RedirectStandardOutput" and "RedirectStandardError" are same. Give different inputs and Run your command again.
+[2025-11-17 01:06:54] [ERROR] Node PID file was empty.
+[2025-11-17 01:06:54] [INFO] Node server started (PID ).
+[2025-11-17 01:06:54] [ERROR] C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\node-server-20251117-010650.log (PID Node server) exited unexpectedly. Check  for details.
+[2025-11-17 01:06:55] [INFO] Starting Caddy reverse proxy (log file: C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\caddy-20251117-010650.log).
+[2025-11-17 01:06:55] [ERROR] Failed to launch Caddy: 
+[2025-11-17 01:06:55] [ERROR] This command cannot be run because "RedirectStandardOutput" and "RedirectStandardError" are same. Give different inputs and Run your command again.
+[2025-11-17 01:06:55] [ERROR] Caddy PID file was empty.
+[2025-11-17 01:06:56] [INFO] Caddy started (PID ).
+[2025-11-17 01:06:56] [ERROR] C:\Users\User\Documents\GitHub\Wheel-of-Name---Offline\logs\caddy-20251117-010650.log (PID Caddy reverse proxy) exited unexpectedly. Check  for details.
+[2025-11-17 01:06:56] [INFO] Waiting for Node server (port 8080) to accept connections...
+[2025-11-17 01:06:57] [INFO] Node server is ready.
+[2025-11-17 01:06:57] [INFO] Waiting for Caddy HTTPS endpoint (port 8443) to accept connections...
