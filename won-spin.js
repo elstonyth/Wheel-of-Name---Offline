@@ -193,18 +193,66 @@
       return `Slice ${index + 1}`;
     }
 
-    function populateOptions(select) {
+    function populateOptions(select, onReady) {
       const entries = Geometry.getDisplayEntries();
       select.innerHTML = '';
-      entries.forEach((entry, idx) => {
-        const option = document.createElement('option');
-        option.value = String(idx);
-        option.textContent = buildOptionLabel(entry, idx);
-        select.appendChild(option);
-      });
-      if (entries.length) {
-        select.selectedIndex = 0;
+
+      if (!entries.length) {
+        if (typeof onReady === 'function') {
+          onReady();
+        }
+        return;
       }
+
+      let index = 0;
+      let fragment = document.createDocumentFragment();
+      const BATCH_SIZE = 400;
+
+      function flushFragment() {
+        if (fragment.childNodes.length) {
+          select.appendChild(fragment);
+          fragment = document.createDocumentFragment();
+        }
+      }
+
+      function appendBatch(deadline) {
+        const start = performance.now();
+        const hasTime = () => {
+          if (deadline && typeof deadline.timeRemaining === 'function') {
+            return deadline.timeRemaining() > 1;
+          }
+          return performance.now() - start < 12;
+        };
+
+        while (index < entries.length && hasTime()) {
+          const entry = entries[index];
+          const option = document.createElement('option');
+          option.value = String(index);
+          option.textContent = buildOptionLabel(entry, index);
+          fragment.appendChild(option);
+          index += 1;
+          if (index % BATCH_SIZE === 0) {
+            flushFragment();
+          }
+        }
+
+        flushFragment();
+
+        if (index < entries.length) {
+          const schedule = window.requestIdleCallback || window.requestAnimationFrame;
+          schedule(appendBatch);
+        } else {
+          select.selectedIndex = 0;
+          select.disabled = false;
+          if (typeof onReady === 'function') {
+            onReady();
+          }
+        }
+      }
+
+      select.disabled = true;
+      const schedule = window.requestIdleCallback || window.requestAnimationFrame;
+      schedule(appendBatch);
     }
 
     function applySelection() {
@@ -251,7 +299,6 @@
       select.style.fontSize = '0.9rem';
       select.style.borderRadius = '4px';
       select.setAttribute('aria-label', 'Choose winner');
-      populateOptions(select);
 
       const buttonRow = document.createElement('div');
       buttonRow.style.display = 'flex';
@@ -268,6 +315,10 @@
       applyBtn.style.border = 'none';
       applyBtn.style.borderRadius = '4px';
       applyBtn.style.cursor = 'pointer';
+      applyBtn.disabled = true;
+      populateOptions(select, () => {
+        applyBtn.disabled = false;
+      });
 
       const cancelBtn = document.createElement('button');
       cancelBtn.textContent = 'Cancel';
@@ -508,10 +559,150 @@
     return api;
   }());
 
+  function patchHighSliceRenderer(engine) {
+    if (!engine || !engine.constructor || !engine.constructor.prototype) {
+      return;
+    }
+
+    const proto = engine.constructor.prototype;
+    if (proto.__wonHighSlicePatched) {
+      return;
+    }
+
+    const originalDrawBasicSlices = proto.drawBasicSlices;
+
+    function pickColor(entry, wheelConfig, index) {
+      if (entry && entry.color) {
+        return entry.color;
+      }
+
+      const palette = wheelConfig && Array.isArray(wheelConfig.colors)
+        ? wheelConfig.colors
+        : null;
+      if (palette && palette.length) {
+        return palette[index % palette.length];
+      }
+
+      return '#ccc';
+    }
+
+    function buildCacheKey(renderState) {
+      const { displayEntries, wheelConfig, wheelRadius } = renderState || {};
+      const outline = wheelConfig && typeof wheelConfig.outlineWidth === 'number'
+        ? wheelConfig.outlineWidth
+        : 0;
+      const outlineColor = wheelConfig && wheelConfig.outlineColor
+        ? wheelConfig.outlineColor
+        : 'transparent';
+      const palette = wheelConfig && Array.isArray(wheelConfig.colors)
+        ? wheelConfig.colors
+        : [];
+      const entrySwatch = (displayEntries || [])
+        .slice(0, 48)
+        .map((entry) => (entry && entry.color) || '')
+        .join(',');
+
+      return [
+        displayEntries ? displayEntries.length : 0,
+        wheelRadius || 0,
+        outline,
+        outlineColor,
+        palette.join(','),
+        entrySwatch,
+      ].join('|');
+    }
+
+    function renderStableSlices(engine, renderState, cacheKey) {
+      const { context, displayEntries, wheelConfig, wheelRadius } = renderState || {};
+      if (!context || !displayEntries || !displayEntries.length || !wheelRadius) {
+        return null;
+      }
+
+      const count = displayEntries.length;
+      const radians = TWO_PI / count;
+      const outline = wheelConfig && typeof wheelConfig.outlineWidth === 'number'
+        ? wheelConfig.outlineWidth
+        : 0;
+      const outlineColor = wheelConfig && wheelConfig.outlineColor
+        ? wheelConfig.outlineColor
+        : 'transparent';
+
+      const diameter = Math.max(2, Math.ceil(wheelRadius * 2 + outline * 2 + 4));
+      const cacheCanvas = engine.__wonHighSliceCache && engine.__wonHighSliceCache.canvas
+        ? engine.__wonHighSliceCache.canvas
+        : document.createElement('canvas');
+      cacheCanvas.width = diameter;
+      cacheCanvas.height = diameter;
+      const cacheCtx = cacheCanvas.getContext('2d');
+      cacheCtx.save();
+      cacheCtx.clearRect(0, 0, diameter, diameter);
+      cacheCtx.translate(diameter / 2, diameter / 2);
+
+      const baseColor = pickColor(displayEntries[0] || {}, wheelConfig, 0);
+      cacheCtx.beginPath();
+      cacheCtx.arc(0, 0, wheelRadius, 0, TWO_PI);
+      cacheCtx.closePath();
+      cacheCtx.fillStyle = baseColor;
+      cacheCtx.fill();
+
+      for (let index = 0; index < count; index += 1) {
+        const slice = displayEntries[index] || {};
+        const start = -index * radians;
+        const end = start - radians;
+        const fillColor = pickColor(slice, wheelConfig, index);
+
+        cacheCtx.beginPath();
+        cacheCtx.moveTo(0, 0);
+        cacheCtx.arc(0, 0, wheelRadius, start, end, true);
+        cacheCtx.closePath();
+        cacheCtx.fillStyle = fillColor;
+        cacheCtx.fill();
+      }
+
+      if (outline > 0) {
+        cacheCtx.beginPath();
+        cacheCtx.arc(0, 0, Math.max(0, wheelRadius - outline / 2), 0, TWO_PI);
+        cacheCtx.closePath();
+        cacheCtx.lineWidth = Math.max(0.5, outline);
+        cacheCtx.strokeStyle = outlineColor;
+        cacheCtx.stroke();
+      }
+
+      cacheCtx.restore();
+      engine.__wonHighSliceCache = { key: cacheKey, canvas: cacheCanvas };
+      return cacheCanvas;
+    }
+
+    proto.drawBasicSlices = function patchedDrawBasicSlices(renderState) {
+      try {
+        if (renderState && renderState.displayEntries && renderState.displayEntries.length >= 2000) {
+          const key = buildCacheKey(renderState);
+          const cached = this.__wonHighSliceCache && this.__wonHighSliceCache.canvas;
+          const isStale = !this.__wonHighSliceCache || this.__wonHighSliceCache.key !== key;
+          const canvas = isStale ? renderStableSlices(this, renderState, key) : cached;
+          if (canvas) {
+            const ctx = renderState.context;
+            ctx.save();
+            ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+            ctx.restore();
+            return true;
+          }
+        }
+      } catch (err) {
+        console.warn('[WON] Stable slice renderer failed; falling back', err);
+      }
+
+      return originalDrawBasicSlices.call(this, renderState);
+    };
+
+    proto.__wonHighSlicePatched = true;
+  }
+
   function setupWithEngine(engine) {
     try {
       Geometry.attach(engine);
       SpinController.attach(engine);
+      patchHighSliceRenderer(engine);
     } catch (err) {
       console.warn('[WON] Failed to attach spin controller', err);
     }
