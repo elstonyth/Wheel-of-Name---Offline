@@ -44,7 +44,18 @@ WON.onWheelEngineReady = function onWheelEngineReady(handler) {
 
 import('/assets/index-v385.js')
   .then((mod) => {
-    const WheelClass = mod?.b6;
+    let WheelClass = mod?.b6;
+    if (!WheelClass) {
+      // Dynamic search for WheelClass
+      for (const key in mod) {
+        if (mod[key]?.prototype?.drawBasicSlices) {
+          WheelClass = mod[key];
+          console.log('[WON] Found WheelClass dynamically:', key);
+          break;
+        }
+      }
+    }
+
     if (!WheelClass) {
       console.warn('[WON] Wheel engine class could not be found.');
       return;

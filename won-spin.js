@@ -673,6 +673,52 @@
       return cacheCanvas;
     }
 
+    function getContrastColor(hexColor) {
+      if (!hexColor) return '#000000';
+      const hex = hexColor.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+      return (yiq >= 128) ? '#000000' : '#ffffff';
+    }
+
+    function drawLabels(engine, renderState) {
+      const { context, displayEntries, wheelRadius, wheelConfig } = renderState;
+      if (!displayEntries || !displayEntries.length || !context) return;
+
+      const count = displayEntries.length;
+
+      // Skip text rendering for very high entry counts (performance optimization)
+      // At 2000+ entries, text is illegible anyway and causes severe lag
+      if (count >= 2000) {
+        return;
+      }
+
+      const radians = TWO_PI / count;
+      const font = '14px sans-serif';
+
+      context.save();
+      context.font = font;
+      context.textBaseline = 'middle';
+      context.textAlign = 'end';
+
+      for (let i = 0; i < count; i++) {
+        const entry = displayEntries[i];
+        if (entry && entry.text) {
+          const sliceColor = pickColor(entry, wheelConfig, i);
+          const textColor = getContrastColor(sliceColor);
+
+          context.save();
+          context.rotate(-radians * i);
+          context.fillStyle = textColor;
+          context.fillText(entry.text, wheelRadius - 10, 0);
+          context.restore();
+        }
+      }
+      context.restore();
+    }
+
     proto.drawBasicSlices = function patchedDrawBasicSlices(renderState) {
       try {
         if (renderState && renderState.displayEntries && renderState.displayEntries.length >= 2000) {
@@ -685,6 +731,10 @@
             ctx.save();
             ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
             ctx.restore();
+
+            // Skip text rendering for performance (disabled at 2000+ entries)
+            drawLabels(this, renderState);
+
             return true;
           }
         }

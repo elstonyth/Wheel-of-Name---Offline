@@ -1,2 +1,5 @@
 .gemini/
 gha-creds-*.json
+logs/
+verify_fix.js
+node_modules/
