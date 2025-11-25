@@ -1,102 +1,132 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
+chcp 65001 >nul 2>&1
+title Wheel of Names - Offline Server
 
 rem ==============================================================
 rem Wheel of Names Offline - Launcher & Manager
-rem ==============================================================
-rem Usage: start-wheel-server.bat [test]
-rem   - No args: Interactive mode with browser launch
-rem   - test: Automated test mode with Puppeteer
 rem ==============================================================
 
 set "SCRIPT_PID="
 set "NODE_PID="
 set "CADDY_PID="
 set "TEST_MODE=0"
+set "LOCAL_IP="
 
 rem Check for test mode argument
 if /I "%~1"=="test" set "TEST_MODE=1"
 
+rem Colors via PowerShell helper
+set "PS_GREEN=Write-Host -ForegroundColor Green"
+set "PS_YELLOW=Write-Host -ForegroundColor Yellow"
+set "PS_RED=Write-Host -ForegroundColor Red"
+set "PS_CYAN=Write-Host -ForegroundColor Cyan"
+
+cls
+echo.
+powershell -Command "%PS_CYAN% '  ╔══════════════════════════════════════════════════════╗'"
+powershell -Command "%PS_CYAN% '  ║                                                      ║'"
+powershell -Command "%PS_CYAN% '  ║        🎡  WHEEL OF NAMES - OFFLINE SERVER  🎡       ║'"
+powershell -Command "%PS_CYAN% '  ║                                                      ║'"
+powershell -Command "%PS_CYAN% '  ╚══════════════════════════════════════════════════════╝'"
+echo.
+
 rem 1. Check for Administrator Privileges and Auto-Elevate
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
-    echo [INFO] Requesting Administrator privileges...
+    powershell -Command "%PS_YELLOW% '  ⏳ Requesting Administrator privileges...'"
     set "_ARGS=%*"
     powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%_ARGS%' -Verb RunAs"
     exit /b
 )
 
 cd /d "%~dp0"
-echo [INFO] Running as Administrator.
+powershell -Command "%PS_GREEN% '  ✓ Running as Administrator'"
 
 rem Get current script PID for Guardian
 for /f "tokens=2" %%a in ('tasklist /fi "imagename eq cmd.exe" /v ^| findstr /i "%~nx0"') do (
     set "SCRIPT_PID=%%a"
 )
 
+rem Get local IP for remote control
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /C:"IPv4"') do (
+    for /f "tokens=1" %%b in ("%%a") do (
+        if "!LOCAL_IP!"=="" set "LOCAL_IP=%%b"
+    )
+)
+if "%LOCAL_IP%"=="" set "LOCAL_IP=127.0.0.1"
+
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   SETUP PROGRESS'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+
 rem 2. Cleanup Existing Processes
-echo [INFO] Cleaning up old processes...
+powershell -Command "Write-Host '  [1/8] ' -NoNewline; %PS_YELLOW% 'Cleaning up old processes...' -NoNewline"
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM caddy.exe >nul 2>&1
+powershell -Command "%PS_GREEN% ' Done'"
 
 rem 3. Check Dependencies
 if not exist "node_modules" (
-    echo [INFO] Installing dependencies...
+    powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_YELLOW% 'Installing dependencies...'"
     call npm install
     if !errorLevel! NEQ 0 (
-        echo [ERROR] npm install failed. Please check your Node.js installation.
+        powershell -Command "%PS_RED% '  ✗ npm install failed. Check Node.js installation.'"
         pause
         exit /b 1
     )
+    powershell -Command "%PS_GREEN% '        ✓ Dependencies installed'"
+) else (
+    powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_GREEN% 'Dependencies OK'"
 )
 
 rem 4. Set Hostname (skip prompt in test mode)
 if "%TEST_MODE%"=="1" (
     set "HOSTNAME=wheel.local"
-    echo [INFO] Test mode: Using default hostname wheel.local
+    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: wheel.local (test mode)'"
 ) else (
     echo.
-    echo ============================================================
-    echo   CUSTOM URL SETUP
-    echo ============================================================
+    powershell -Command "%PS_CYAN% '  ┌──────────────────────────────────────────────────────┐'"
+    powershell -Command "%PS_CYAN% '  │  CUSTOM DOMAIN SETUP                                 │'"
+    powershell -Command "%PS_CYAN% '  └──────────────────────────────────────────────────────┘'"
     echo.
     set "HOSTNAME=wheel.local"
-    set /p "HOSTNAME=Enter desired domain name (default: wheel.local): "
+    set /p "HOSTNAME=    Enter domain name [wheel.local]: "
+    if "!HOSTNAME!"=="" set "HOSTNAME=wheel.local"
+    echo.
+    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: %HOSTNAME%'"
 )
-echo.
-echo [INFO] Using hostname: %HOSTNAME%
 
-rem 5. Update Hosts File
+rem 4. Update Hosts File
 set "HOSTS_FILE=%SystemRoot%\System32\drivers\etc\hosts"
-echo [INFO] Updating hosts file...
+powershell -Command "Write-Host '  [4/8] ' -NoNewline; %PS_YELLOW% 'Updating hosts file...' -NoNewline"
 findstr /C:"127.0.0.1 %HOSTNAME%" "%HOSTS_FILE%" >nul 2>&1
 if %errorLevel% NEQ 0 (
     echo. >> "%HOSTS_FILE%"
     echo 127.0.0.1 %HOSTNAME% >> "%HOSTS_FILE%"
-    echo [SUCCESS] Added %HOSTNAME% to hosts file.
+    powershell -Command "%PS_GREEN% ' Added'"
 ) else (
-    echo [INFO] %HOSTNAME% already exists in hosts file.
+    powershell -Command "%PS_GREEN% ' OK (exists)'"
 )
 
-rem 6. Check if port 8080 is available
-echo [INFO] Checking port 8080 availability...
+rem 5. Check if port 8080 is available
 set "PORT=8080"
 :CHECK_PORT
 netstat -an | findstr /C:":%PORT% " | findstr "LISTENING" >nul 2>&1
 if %errorLevel% EQU 0 (
-    echo [WARN] Port %PORT% is in use. Trying port !PORT!+1...
     set /a "PORT+=1"
     if !PORT! GTR 8100 (
-        echo [ERROR] No available ports found between 8080-8100.
+        powershell -Command "%PS_RED% '  ✗ No available ports (8080-8100)'"
         pause
         exit /b 1
     )
     goto CHECK_PORT
 )
-echo [INFO] Using port %PORT%
+powershell -Command "Write-Host '  [5/8] ' -NoNewline; %PS_GREEN% 'Port %PORT% available'"
 
-rem 7. Generate Dynamic Caddyfile with HTTPS support
-echo [INFO] Generating Caddyfile...
+rem 6. Generate Dynamic Caddyfile with HTTPS support
 (
     echo {
     echo     auto_https disable_redirects
@@ -115,25 +145,28 @@ echo [INFO] Generating Caddyfile...
     echo     reverse_proxy localhost:%PORT%
     echo }
 ) > Caddyfile
+powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Caddyfile generated'"
 
-rem 8. Setup logs directory
+rem 7. Setup logs directory
 set "LOG_DIR=logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
-rem 9. Trust Caddy certificate (with error handling)
-echo [INFO] Trusting Caddy root certificate...
+rem 8. Trust Caddy certificate (with error handling)
+powershell -Command "Write-Host '  [7/8] ' -NoNewline; %PS_YELLOW% 'Trusting SSL certificate...' -NoNewline"
 if not exist "caddy.exe" (
-    echo [ERROR] caddy.exe not found!
+    powershell -Command "%PS_RED% ' FAILED (caddy.exe not found)'"
     pause
     exit /b 1
 )
 caddy.exe trust >nul 2>&1
 if %errorLevel% NEQ 0 (
-    echo [WARN] Caddy trust command failed. HTTPS may show certificate warnings.
+    powershell -Command "%PS_YELLOW% ' Warning (may show browser warning)'"
+) else (
+    powershell -Command "%PS_GREEN% ' Done'"
 )
 
-rem 10. Start Node Server
-echo [INFO] Starting Node server on port %PORT%...
+rem 9. Start Node Server
+powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
 set "NODE_LOG=%LOG_DIR%\node_server.log"
 start /B cmd /c "set PORT=%PORT% && node clone.js serve > "%NODE_LOG%" 2>&1"
 
@@ -143,8 +176,7 @@ for /f "tokens=2" %%a in ('tasklist /fi "imagename eq node.exe" /fo list ^| find
     set "NODE_PID=%%a"
 )
 
-rem 11. Start Caddy
-echo [INFO] Starting Caddy...
+rem 10. Start Caddy
 set "CADDY_LOG=%LOG_DIR%\caddy.log"
 start /B cmd /c "caddy.exe run --config Caddyfile > "%CADDY_LOG%" 2>&1"
 
@@ -154,8 +186,7 @@ for /f "tokens=2" %%a in ('tasklist /fi "imagename eq caddy.exe" /fo list ^| fin
     set "CADDY_PID=%%a"
 )
 
-rem 12. Start Guardian Process (monitors this script and kills children on exit)
-echo [INFO] Starting Guardian process...
+rem 11. Start Guardian Process (monitors this script and kills children on exit)
 set "GUARDIAN_SCRIPT=%LOG_DIR%\guardian.ps1"
 (
     echo $parentPid = %SCRIPT_PID%
@@ -174,66 +205,97 @@ set "GUARDIAN_SCRIPT=%LOG_DIR%\guardian.ps1"
 ) > "%GUARDIAN_SCRIPT%"
 start /B /MIN powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%GUARDIAN_SCRIPT%"
 
-rem 13. Wait for Services
-echo [INFO] Waiting for services to start...
+rem 12. Wait for Services
 call :wait_for_port %PORT% 30
 if %errorLevel% NEQ 0 (
-    echo [ERROR] Node server failed to start on port %PORT%. Check %NODE_LOG%
+    powershell -Command "%PS_RED% ' FAILED'"
+    powershell -Command "%PS_RED% '  ✗ Server failed to start. Check %NODE_LOG%'"
     goto CLEANUP
 )
+powershell -Command "%PS_GREEN% ' Running!'"
 
-rem 14. Test Mode or Interactive Mode
+rem 13. Test Mode or Interactive Mode
 if "%TEST_MODE%"=="1" (
     echo.
-    echo ============================================================
-    echo   TEST MODE - Running automated tests
-    echo ============================================================
+    powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+    powershell -Command "%PS_CYAN% '   TEST MODE'"
+    powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
     if exist "scripts\test-performance.js" (
         node scripts\test-performance.js --port %PORT%
     ) else (
-        echo [WARN] Test script not found at scripts\test-performance.js
+        powershell -Command "%PS_YELLOW% '  ⚠ Test script not found'"
     )
     goto CLEANUP
 )
 
-rem 15. Launch Browser
-echo [INFO] Launching browser...
+rem 14. Launch Browser
 start https://%HOSTNAME%
 
 :WAIT_LOOP
+cls
 echo.
-echo ============================================================
-echo   SERVER RUNNING
-echo ============================================================
-echo   HTTP:  http://%HOSTNAME%
-echo   HTTPS: https://%HOSTNAME%
-echo   Port:  %PORT%
+powershell -Command "%PS_CYAN% '  ╔══════════════════════════════════════════════════════╗'"
+powershell -Command "%PS_CYAN% '  ║                                                      ║'"
+powershell -Command "%PS_CYAN% '  ║        🎡  WHEEL OF NAMES - OFFLINE SERVER  🎡       ║'"
+powershell -Command "%PS_CYAN% '  ║                                                      ║'"
+powershell -Command "%PS_CYAN% '  ╚══════════════════════════════════════════════════════╝'"
 echo.
-echo   IMPORTANT:
-echo   [Q] Type 'Q' and press Enter to STOP server and RESTORE hosts.
-echo   [X] Closing window will auto-cleanup via Guardian process.
-echo ============================================================
+powershell -Command "%PS_GREEN% '  ✓ SERVER IS RUNNING'"
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   ACCESS URLS'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+powershell -Command "Write-Host '   🌐 Main Display:  ' -NoNewline; %PS_GREEN% 'https://%HOSTNAME%'"
+powershell -Command "Write-Host '   🌐 HTTP Access:   ' -NoNewline; Write-Host 'http://%HOSTNAME%' -ForegroundColor White"
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   📱 REMOTE CONTROL (open on your phone)'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+powershell -Command "Write-Host '   📱 Remote URL:    ' -NoNewline; %PS_YELLOW% 'http://%LOCAL_IP%:%PORT%/remote'"
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   ⚙️  SERVER INFO'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+powershell -Command "Write-Host '   Port:     ' -NoNewline; Write-Host '%PORT%' -ForegroundColor White"
+powershell -Command "Write-Host '   Local IP: ' -NoNewline; Write-Host '%LOCAL_IP%' -ForegroundColor White"
+powershell -Command "Write-Host '   Logs:     ' -NoNewline; Write-Host '%LOG_DIR%\' -ForegroundColor White"
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   HOW TO STOP'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+powershell -Command "Write-Host '   [Q] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Type Q + Enter to stop cleanly'"
+powershell -Command "Write-Host '   [X] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Close window (auto-cleanup enabled)'"
+echo.
+powershell -Command "%PS_CYAN% '  ═══════════════════════════════════════════════════════════'"
 echo.
 
-set /p "CHOICE=Enter option (Q to quit): "
+set /p "CHOICE=  Enter option (Q to quit): "
 if /I "%CHOICE%"=="Q" goto CLEANUP
 goto WAIT_LOOP
 
 :CLEANUP
 echo.
-echo [INFO] Stopping servers...
+powershell -Command "%PS_YELLOW% '  ⏳ Shutting down...'"
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM caddy.exe >nul 2>&1
 
-echo [INFO] Restoring hosts file (removing %HOSTNAME%)...
+powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Servers stopped'"
+
+powershell -Command "Write-Host '  ⏳ ' -NoNewline; Write-Host 'Restoring hosts file...'"
 rem FIX: Escape hostname for regex (periods become literal)
 set "ESCAPED_HOSTNAME=%HOSTNAME:.=\.%"
 powershell -Command "$escaped = [regex]::Escape('127.0.0.1 %HOSTNAME%'); (Get-Content '%HOSTS_FILE%') | Where-Object { $_ -notmatch $escaped } | Set-Content '%HOSTS_FILE%'"
 
-echo [SUCCESS] Done. Access to %HOSTNAME% has been restored.
+powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
+echo.
+powershell -Command "%PS_GREEN% '  ✓ All done! Goodbye.'"
+echo.
 if "%TEST_MODE%"=="0" (
-    echo [INFO] Closing window in 3 seconds...
-    timeout /t 3 >nul
+    timeout /t 2 >nul
 )
 exit /b 0
 
