@@ -7,10 +7,7 @@ rem ==============================================================
 rem Wheel of Names Offline - Launcher & Manager
 rem ==============================================================
 
-rem Check for diagnostic mode
-if /I "%~1"=="--check" goto DIAGNOSTIC_MODE
-if /I "%~1"=="--diagnose" goto DIAGNOSTIC_MODE
-if /I "%~1"=="--help" goto HELP_MODE
+set "REQUEST=%~1"
 
 rem DEBUG: Add immediate pause to catch early errors
 if "%DEBUG_PAUSE%"=="1" pause
@@ -26,6 +23,10 @@ set "PS_GREEN=Write-Host -ForegroundColor Green"
 set "PS_YELLOW=Write-Host -ForegroundColor Yellow"
 set "PS_RED=Write-Host -ForegroundColor Red"
 set "PS_CYAN=Write-Host -ForegroundColor Cyan"
+
+if /I "%REQUEST%"=="--help" goto HELP_MODE
+if /I "%REQUEST%"=="--check" goto DIAGNOSTIC_MODE
+if /I "%REQUEST%"=="--diagnose" goto DIAGNOSTIC_MODE
 
 rem ==============================================================
 
@@ -560,6 +561,9 @@ echo.
 powershell -Command "Write-Host '  🔧 WHEEL OF NAMES - DIAGNOSTIC MODE' -ForegroundColor Cyan"
 echo.
 powershell -Command "Write-Host '  Running system checks without starting server...' -ForegroundColor Yellow"
+
+rem Create logs directory for diagnostic mode
+if not exist "logs" mkdir "logs"
 
 rem Define colors for diagnostic mode
 set "PS_GREEN=Write-Host -ForegroundColor Green"
