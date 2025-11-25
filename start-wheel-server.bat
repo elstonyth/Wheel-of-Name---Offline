@@ -367,26 +367,27 @@ if "%TEST_MODE%"=="1" (
     echo [%date% %time%] Test mode: using localhost >> "%DEBUG_LOG%"
     powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: localhost (test mode)'"
     goto SKIP_HOSTS_SETUP
-) else (
-    echo.
-    powershell -Command "%PS_CYAN% '  ┌──────────────────────────────────────────────────────┐'"
-    powershell -Command "%PS_CYAN% '  │  CUSTOM DOMAIN SETUP                                 │'"
-    powershell -Command "%PS_CYAN% '  └──────────────────────────────────────────────────────┘'"
-    echo.
-    set "HOSTNAME=wheel.local"
-    set /p "HOSTNAME=    Enter domain name [wheel.local]: "
-    if "!HOSTNAME!"=="" set "HOSTNAME=wheel.local"
-    echo.
-    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: %HOSTNAME%'"
 )
+
+echo.
+powershell -Command "%PS_CYAN% '  ┌──────────────────────────────────────────────────────┐'"
+powershell -Command "%PS_CYAN% '  │  CUSTOM DOMAIN SETUP                                 │'"
+powershell -Command "%PS_CYAN% '  └──────────────────────────────────────────────────────┘'"
+echo.
+set "HOSTNAME=wheel.local"
+set /p "HOSTNAME=    Enter domain name [wheel.local]: "
+if "!HOSTNAME!"=="" set "HOSTNAME=wheel.local"
+echo.
+echo [%date% %time%] Using hostname: !HOSTNAME! >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: !HOSTNAME!'"
 
 rem 4. Update Hosts File (skip in test mode)
 set "HOSTS_FILE=%SystemRoot%\System32\drivers\etc\hosts"
 powershell -Command "Write-Host '  [4/8] ' -NoNewline; %PS_YELLOW% 'Updating hosts file...' -NoNewline"
-findstr /C:"127.0.0.1 %HOSTNAME%" "%HOSTS_FILE%" >nul 2>&1
-if %errorLevel% NEQ 0 (
+findstr /C:"127.0.0.1 !HOSTNAME!" "%HOSTS_FILE%" >nul 2>&1
+if !errorLevel! NEQ 0 (
     echo. >> "%HOSTS_FILE%"
-    echo 127.0.0.1 %HOSTNAME% >> "%HOSTS_FILE%"
+    echo 127.0.0.1 !HOSTNAME! >> "%HOSTS_FILE%"
     powershell -Command "%PS_GREEN% ' Added'"
 ) else (
     powershell -Command "%PS_GREEN% ' OK (exists)'"
@@ -421,17 +422,17 @@ if "%TEST_MODE%"=="1" (
     echo     auto_https disable_redirects
     echo }
     echo.
-    echo https://%HOSTNAME% {
+    echo https://!HOSTNAME! {
     echo     tls internal
-    echo     reverse_proxy localhost:%PORT%
+    echo     reverse_proxy localhost:!PORT!
     echo }
     echo.
-    echo http://%HOSTNAME% {
-    echo     reverse_proxy localhost:%PORT%
+    echo http://!HOSTNAME! {
+    echo     reverse_proxy localhost:!PORT!
     echo }
     echo.
     echo http://localhost:80 {
-    echo     reverse_proxy localhost:%PORT%
+    echo     reverse_proxy localhost:!PORT!
     echo }
 ) > Caddyfile
 powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Caddyfile generated'"
@@ -541,7 +542,7 @@ if "%TEST_MODE%"=="1" (
 )
 
 rem 14. Launch Browser
-start https://%HOSTNAME%
+start https://!HOSTNAME!
 
 :WAIT_LOOP
 cls
@@ -558,8 +559,8 @@ powershell -Command "%PS_CYAN% '  ───────────────�
 powershell -Command "%PS_CYAN% '   ACCESS URLS'"
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 echo.
-powershell -Command "Write-Host '   🌐 Main Display:  ' -NoNewline; %PS_GREEN% 'https://%HOSTNAME%'"
-powershell -Command "Write-Host '   🌐 HTTP Access:   ' -NoNewline; Write-Host 'http://%HOSTNAME%' -ForegroundColor White"
+powershell -Command "Write-Host '   🌐 Main Display:  ' -NoNewline; %PS_GREEN% 'https://!HOSTNAME!'"
+powershell -Command "Write-Host '   🌐 HTTP Access:   ' -NoNewline; Write-Host 'http://!HOSTNAME!' -ForegroundColor White"
 echo.
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 powershell -Command "%PS_CYAN% '   📱 REMOTE CONTROL (open on your phone)'"
@@ -607,8 +608,7 @@ if "%TEST_MODE%"=="1" (
     echo [%date% %time%] Hosts file path is empty, skipping cleanup >> "%DEBUG_LOG%"
     powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file cleanup skipped (no path)'"
 ) else (
-    set "ESCAPED_HOSTNAME=%HOSTNAME:.=\.%"
-    powershell -Command "$escaped = [regex]::Escape('127.0.0.1 %HOSTNAME%'); (Get-Content '%HOSTS_FILE%') | Where-Object { $_ -notmatch $escaped } | Set-Content '%HOSTS_FILE%'"
+    powershell -Command "$escaped = [regex]::Escape('127.0.0.1 !HOSTNAME!'); (Get-Content '%HOSTS_FILE%') | Where-Object { $_ -notmatch $escaped } | Set-Content '%HOSTS_FILE%'"
     powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
 )
 
