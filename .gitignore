@@ -3,3 +3,6 @@ gha-creds-*.json
 logs/
 verify_fix.js
 node_modules/
+
+node-portable/
+*.zip

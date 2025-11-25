@@ -8,6 +8,12 @@ const net = require('net');
 const os = require('os');
 const { URL } = require('url');
 const WebSocket = require('ws');
+let qrcode;
+try {
+  qrcode = require('qrcode-terminal');
+} catch (e) {
+  qrcode = null; // Optional dependency
+}
 
 const TARGET_URL = 'https://wheelofnames.com/';
 const OUTPUT_DIR = 'cloned-site-offline';
@@ -722,9 +728,19 @@ async function startServer() {
     const addr = server.address();
     const boundPort = addr && typeof addr === 'object' ? addr.port : currentPort;
     const localIP = getLocalIP();
+    const remoteUrl = `http://${localIP}:${boundPort}/remote`;
+    
     console.log(`\n🌐 Local server running → http://localhost:${boundPort}`);
-    console.log(`📱 Remote control → http://${localIP}:${boundPort}/remote`);
-    console.log(`   (Open this URL on your phone to control the wheel)`);
+    console.log(`📱 Remote control → ${remoteUrl}`);
+    
+    // Display QR code for remote control
+    if (qrcode) {
+      console.log(`\n📱 Scan this QR code with your phone:\n`);
+      qrcode.generate(remoteUrl, { small: true });
+      console.log(`\n   (Or type the URL manually on your phone)`);
+    } else {
+      console.log(`   (Open this URL on your phone to control the wheel)`);
+    }
   });
   
   serverInstance = server;
