@@ -1,7 +1,13 @@
 #Requires -Version 5.1
 param([switch]$Check, [switch]$Test, [switch]$Help)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
+trap {
+    Write-Host "`n  ERROR: $_" -ForegroundColor Red
+    Write-Host "  Press Enter to exit..." -ForegroundColor Yellow
+    Read-Host
+    exit 1
+}
 $Host.UI.RawUI.WindowTitle = "Wheel of Names - Offline Server"
 
 $NodeVersion = "20.18.0"
@@ -140,7 +146,7 @@ Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
 
 if (-not $Test -and -not (Test-Admin)) {
     Write-Host "  Requesting Administrator privileges..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit 0
 }
 
@@ -210,4 +216,5 @@ Stop-Process -Name "caddy" -Force -ErrorAction SilentlyContinue
 $content = Get-Content $hostsFile -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch [regex]::Escape("127.0.0.1 $hostname") }
 Set-Content $hostsFile $content -ErrorAction SilentlyContinue
 Write-Host "  Done!`n" -ForegroundColor Green
+
 
