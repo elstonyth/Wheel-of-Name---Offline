@@ -1,6 +1,25 @@
 {
+  "name": "wheel-of-name-offline",
+  "version": "1.0.0",
+  "description": "Offline clone of Wheel of Names with cheat functionality",
+  "main": "clone.js",
+  "scripts": {
+    "clone": "node clone.js",
+    "serve": "node clone.js serve",
+    "start": "start-wheel-server.bat",
+    "test": "start-wheel-server.bat test"
+  },
+  "keywords": [
+    "wheel",
+    "names",
+    "offline",
+    "clone"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
     "fs-extra": "^11.3.2",
-    "puppeteer": "^24.29.1"
+    "puppeteer": "^24.29.1",
+    "ws": "^8.18.3"
   }
 }

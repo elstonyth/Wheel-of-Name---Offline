@@ -275,93 +275,144 @@
       closePanel();
       const panel = document.createElement('div');
       panel.style.position = 'fixed';
-      panel.style.bottom = '16px';
-      panel.style.right = '16px';
-      panel.style.background = 'rgba(0,0,0,0.8)';
+      panel.style.bottom = '12px';
+      panel.style.right = '12px';
+      panel.style.background = 'rgba(0,0,0,0.85)';
       panel.style.color = '#fff';
-      panel.style.width = '240px';
-      panel.style.borderRadius = '8px';
-      panel.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45)';
-      panel.style.padding = '12px';
+      panel.style.width = '200px';
+      panel.style.borderRadius = '6px';
+      panel.style.boxShadow = '0 3px 10px rgba(0,0,0,0.5)';
+      panel.style.padding = '8px';
       panel.style.fontFamily = 'Roboto, -apple-system, BlinkMacSystemFont, sans-serif';
       panel.style.zIndex = '2147483647';
 
       const title = document.createElement('div');
-      title.textContent = 'Cheat mode';
-      title.style.marginBottom = '8px';
-      title.style.fontSize = '0.95rem';
+      title.textContent = 'Cheat';
+      title.style.marginBottom = '6px';
+      title.style.fontSize = '0.8rem';
       title.style.fontWeight = '600';
+      title.style.paddingRight = '16px';
+
+      // Search input
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.placeholder = 'Search...';
+      searchInput.style.width = '100%';
+      searchInput.style.padding = '5px';
+      searchInput.style.fontSize = '0.75rem';
+      searchInput.style.borderRadius = '3px';
+      searchInput.style.border = '1px solid #555';
+      searchInput.style.background = '#222';
+      searchInput.style.color = '#fff';
+      searchInput.style.marginBottom = '4px';
+      searchInput.style.boxSizing = 'border-box';
 
       const select = document.createElement('select');
       select.style.width = '100%';
-      select.style.margin = '8px 0 12px';
-      select.style.padding = '6px';
-      select.style.fontSize = '0.9rem';
-      select.style.borderRadius = '4px';
+      select.style.padding = '5px';
+      select.style.fontSize = '0.75rem';
+      select.style.borderRadius = '3px';
+      select.style.border = '1px solid #555';
+      select.style.background = '#222';
+      select.style.color = '#fff';
+      select.size = 6; // Show as listbox
       select.setAttribute('aria-label', 'Choose winner');
+
+      // Store all options for filtering
+      let allOptions = [];
+
+      // Search filter function
+      searchInput.addEventListener('input', () => {
+        const query = searchInput.value.toLowerCase().trim();
+        select.innerHTML = '';
+        const filtered = query 
+          ? allOptions.filter(opt => opt.label.toLowerCase().includes(query))
+          : allOptions;
+        filtered.forEach(opt => {
+          const option = document.createElement('option');
+          option.value = opt.value;
+          option.textContent = opt.label;
+          select.appendChild(option);
+        });
+        if (select.options.length > 0) {
+          select.selectedIndex = 0;
+        }
+      });
 
       const buttonRow = document.createElement('div');
       buttonRow.style.display = 'flex';
-      buttonRow.style.gap = '8px';
-      buttonRow.style.marginTop = '8px';
+      buttonRow.style.gap = '4px';
+      buttonRow.style.marginTop = '6px';
 
       const applyBtn = document.createElement('button');
-      applyBtn.textContent = 'Set for next spin';
+      applyBtn.textContent = 'Set';
       applyBtn.style.flex = '1';
-      applyBtn.style.padding = '8px';
-      applyBtn.style.fontSize = '0.9rem';
+      applyBtn.style.padding = '5px';
+      applyBtn.style.fontSize = '0.75rem';
       applyBtn.style.background = '#3369e8';
       applyBtn.style.color = '#fff';
       applyBtn.style.border = 'none';
-      applyBtn.style.borderRadius = '4px';
+      applyBtn.style.borderRadius = '3px';
       applyBtn.style.cursor = 'pointer';
       applyBtn.disabled = true;
-      populateOptions(select, () => {
-        applyBtn.disabled = false;
+
+      // Modified populateOptions to store options for search
+      const entries = Geometry.getDisplayEntries();
+      allOptions = entries.map((entry, index) => ({
+        value: String(index),
+        label: buildOptionLabel(entry, index)
+      }));
+      allOptions.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        select.appendChild(option);
       });
+      if (select.options.length > 0) {
+        select.selectedIndex = 0;
+        applyBtn.disabled = false;
+      }
 
       const cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.style.flex = '1';
-      cancelBtn.style.padding = '8px';
-      cancelBtn.style.fontSize = '0.9rem';
+      cancelBtn.textContent = '✕';
+      cancelBtn.style.padding = '5px 8px';
+      cancelBtn.style.fontSize = '0.75rem';
       cancelBtn.style.background = '#444';
       cancelBtn.style.color = '#fff';
       cancelBtn.style.border = 'none';
-      cancelBtn.style.borderRadius = '4px';
+      cancelBtn.style.borderRadius = '3px';
       cancelBtn.style.cursor = 'pointer';
 
       applyBtn.addEventListener('click', applySelection);
       cancelBtn.addEventListener('click', cancelSelection);
-      const closeBtn = document.createElement('button');
-      closeBtn.textContent = '×';
-      closeBtn.style.position = 'absolute';
-      closeBtn.style.top = '4px';
-      closeBtn.style.right = '8px';
-      closeBtn.style.border = 'none';
-      closeBtn.style.background = 'transparent';
-      closeBtn.style.color = '#aaa';
-      closeBtn.style.fontSize = '1.1rem';
-      closeBtn.style.cursor = 'pointer';
-      closeBtn.addEventListener('click', cancelSelection);
+      
+      // Double-click to select
+      select.addEventListener('dblclick', applySelection);
 
       document.addEventListener('keydown', function onKey(event) {
         if (event.key === 'Escape') {
           document.removeEventListener('keydown', onKey);
           cancelSelection();
         }
-      }, { once: true });
+        if (event.key === 'Enter' && document.activeElement === select) {
+          event.preventDefault();
+          applySelection();
+        }
+      });
 
-      buttonRow.appendChild(cancelBtn);
       buttonRow.appendChild(applyBtn);
+      buttonRow.appendChild(cancelBtn);
 
-      panel.appendChild(closeBtn);
       panel.appendChild(title);
+      panel.appendChild(searchInput);
       panel.appendChild(select);
       panel.appendChild(buttonRow);
       document.body.appendChild(panel);
       state.panel = panel;
       state.selectEl = select;
+      
+      // Focus search input
+      setTimeout(() => searchInput.focus(), 50);
     }
 
     function handleHotspotTap(timestamp) {
@@ -395,18 +446,37 @@
       hotspot.style.width = '64px';
       hotspot.style.height = '64px';
       hotspot.style.zIndex = '2147483647';
-      hotspot.style.cursor = 'pointer';
+      hotspot.style.cursor = 'default';
       hotspot.style.background = 'transparent';
       hotspot.style.touchAction = 'manipulation';
       hotspot.style.userSelect = 'none';
-      hotspot.addEventListener('click', () => handleHotspotTap(performance.now()));
+      hotspot.style.border = 'none';
+      hotspot.addEventListener('click', () => {
+        console.log('[WON] Hotspot tapped');
+        handleHotspotTap(performance.now());
+      });
       document.body.appendChild(hotspot);
     }
 
+    // FIX: Add Ctrl+Shift+X keyboard shortcut for cheat panel
+    function setupKeyboardShortcut() {
+      document.addEventListener('keydown', (event) => {
+        if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'x') {
+          event.preventDefault();
+          console.log('[WON] Cheat panel triggered via Ctrl+Shift+X');
+          openPanel();
+        }
+      });
+    }
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createHotspot);
+      document.addEventListener('DOMContentLoaded', () => {
+        createHotspot();
+        setupKeyboardShortcut();
+      });
     } else {
       createHotspot();
+      setupKeyboardShortcut();
     }
 
     return {
@@ -434,8 +504,9 @@
         if (!sliceCount) {
           return false;
         }
-        // Step 1: choose the target slice (cheat wins once, otherwise random).
-        const forcedIndex = Cheat.consumeForcedWinner();
+        // Step 1: choose the target slice (remote wins first, then cheat, otherwise random).
+        const remoteIndex = consumeRemoteWinner();
+        const forcedIndex = Number.isInteger(remoteIndex) ? remoteIndex : Cheat.consumeForcedWinner();
         const targetIndex = Number.isInteger(forcedIndex)
           ? forcedIndex
           : cryptoRandomInt(0, sliceCount - 1);
@@ -548,11 +619,26 @@
       activeSpin = null;
       engine.speed = 0;
       try {
+        const winner = engine.getEntryAtPointer();
         if (typeof engine.doneSpinningCallback === 'function') {
-          engine.doneSpinningCallback(engine.getEntryAtPointer());
+          engine.doneSpinningCallback(winner);
         }
+        // Notify remote that winner is confirmed
+        notifyWinnerConfirmed(winner);
       } catch (err) {
         console.warn('[WON] doneSpinningCallback failed', err);
+      }
+    }
+    
+    function notifyWinnerConfirmed(winner) {
+      try {
+        const winnerName = winner && winner.text ? winner.text : 'Winner';
+        // Send via RemoteControl WebSocket
+        if (RemoteControl && RemoteControl.sendWinnerConfirmed) {
+          RemoteControl.sendWinnerConfirmed(winnerName);
+        }
+      } catch (e) {
+        console.warn('[WON] Failed to notify winner', e);
       }
     }
 
@@ -748,11 +834,129 @@
     proto.__wonHighSlicePatched = true;
   }
 
+  // ────────────────────────────────
+  // Remote Control WebSocket Client
+  // ────────────────────────────────
+  const RemoteControl = (function () {
+    let ws = null;
+    let reconnectTimer = null;
+    let lastEntriesJson = '';
+    
+    function connect() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      
+      try {
+        // Connect to same host WebSocket
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+          console.log('[WON Remote] Connected to server');
+          ws.send(JSON.stringify({ type: 'register', role: 'display' }));
+          // Send current entries
+          syncEntries();
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'set_winner' && typeof msg.index === 'number') {
+              console.log(`[WON Remote] Received set_winner: ${msg.index}`);
+              // Set the forced winner through Cheat module
+              if (Cheat && typeof Cheat.consumeForcedWinner === 'function') {
+                // We need to set the forcedIndex directly
+                setRemoteWinner(msg.index);
+              }
+            }
+          } catch (e) {
+            console.warn('[WON Remote] Message parse error:', e);
+          }
+        };
+        
+        ws.onclose = () => {
+          console.log('[WON Remote] Disconnected, reconnecting in 3s...');
+          scheduleReconnect();
+        };
+        
+        ws.onerror = (err) => {
+          console.warn('[WON Remote] WebSocket error');
+        };
+      } catch (e) {
+        console.warn('[WON Remote] Connection failed:', e);
+        scheduleReconnect();
+      }
+    }
+    
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, 3000);
+    }
+    
+    function syncEntries() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      
+      try {
+        const entries = Geometry.getDisplayEntries();
+        const json = JSON.stringify(entries);
+        if (json !== lastEntriesJson) {
+          lastEntriesJson = json;
+          ws.send(JSON.stringify({ type: 'entries_update', data: entries }));
+          console.log(`[WON Remote] Synced ${entries.length} entries`);
+        }
+      } catch (e) {
+        // Engine not ready yet
+      }
+    }
+    
+    // Periodically sync entries (in case they change)
+    setInterval(syncEntries, 2000);
+    
+    // Connect when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', connect);
+    } else {
+      setTimeout(connect, 500);
+    }
+    
+    function sendWinnerConfirmed(winnerName) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: 'winner_confirmed', name: winnerName }));
+      console.log('[WON Remote] Sent winner confirmed:', winnerName);
+    }
+    
+    return {
+      connect,
+      syncEntries,
+      sendWinnerConfirmed
+    };
+  }());
+  
+  // Function to set winner from remote (bypasses the Cheat module's internal state)
+  let remoteWinnerIndex = null;
+  
+  function setRemoteWinner(index) {
+    remoteWinnerIndex = index;
+    console.log(`[WON Remote] Winner queued: index ${index}`);
+  }
+  
+  function consumeRemoteWinner() {
+    if (remoteWinnerIndex === null) return null;
+    const idx = remoteWinnerIndex;
+    remoteWinnerIndex = null;
+    return idx;
+  }
+
   function setupWithEngine(engine) {
     try {
       Geometry.attach(engine);
       SpinController.attach(engine);
       patchHighSliceRenderer(engine);
+      // Sync entries after engine is ready
+      setTimeout(() => RemoteControl.syncEntries(), 100);
     } catch (err) {
       console.warn('[WON] Failed to attach spin controller', err);
     }
@@ -762,6 +966,7 @@
   WON.SpinEngine = SpinEngine;
   WON.Cheat = Cheat;
   WON.SpinController = SpinController;
+  WON.RemoteControl = RemoteControl;
 
   if (typeof WON.onWheelEngineReady === 'function') {
     WON.onWheelEngineReady(setupWithEngine);

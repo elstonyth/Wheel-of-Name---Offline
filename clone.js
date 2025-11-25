@@ -5,7 +5,9 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const os = require('os');
 const { URL } = require('url');
+const WebSocket = require('ws');
 
 const TARGET_URL = 'https://wheelofnames.com/';
 const OUTPUT_DIR = 'cloned-site-offline';
@@ -13,9 +15,552 @@ const OUTPUT_DIR = 'cloned-site-offline';
 // ────────────────────────────────
 // Local Server for Preview
 // ────────────────────────────────
+let serverInstance = null;
+let wss = null;
+const wsClients = { displays: new Set(), remotes: new Set() };
+let cachedEntries = [];
+
+// Get local network IP
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
+
+// Broadcast to all display clients
+function broadcastToDisplays(message) {
+  const data = JSON.stringify(message);
+  wsClients.displays.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  });
+}
+
+// Broadcast to all remote clients
+function broadcastToRemotes(message) {
+  const data = JSON.stringify(message);
+  wsClients.remotes.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  });
+}
+
+// Remote control HTML page
+function getRemoteControlHTML(port) {
+  const localIP = getLocalIP();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>🎯 Remote</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+      transition: all 0.3s;
+    }
+    .status-dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+    .refresh-btn {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .refresh-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
+    
+    /* Main content */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      overflow: hidden;
+      gap: 10px;
+    }
+    
+    /* Selected display card */
+    .selected-card {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f3460 100%);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid rgba(96, 165, 250, 0.3);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      position: relative;
+    }
+    .selected-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .selected-name {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-top: 4px;
+      word-break: break-word;
+    }
+    .selected-name.none { color: #64748b; font-style: italic; font-weight: 400; }
+    .cancel-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .cancel-btn.visible { display: flex; }
+    .cancel-btn:active { background: rgba(239, 68, 68, 0.4); transform: scale(0.9); }
+    
+    /* Search container */
+    .search-container {
+      position: relative;
+    }
+    .search-box {
+      width: 100%;
+      padding: 14px 44px 14px 16px;
+      font-size: 1rem;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      transition: all 0.2s;
+    }
+    .search-box::placeholder { color: #64748b; }
+    .search-box:focus { outline: none; border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+    .clear-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #94a3b8;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 1rem;
+      cursor: pointer;
+      display: none;
+    }
+    .clear-btn.visible { display: block; }
+    
+    /* Entries list */
+    .list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+    .count { font-size: 0.8rem; color: #64748b; }
+    .entries-list {
+      flex: 1;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      overflow-y: auto;
+      border: 1px solid rgba(255,255,255,0.05);
+      -webkit-overflow-scrolling: touch;
+    }
+    .entry {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .entry:last-child { border-bottom: none; }
+    .entry:active { background: rgba(59, 130, 246, 0.2); }
+    .entry.selected { 
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.3) 0%, rgba(59, 130, 246, 0.1) 100%);
+      border-left: 3px solid #3b82f6;
+    }
+    .entry-index {
+      width: 32px;
+      height: 32px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      flex-shrink: 0;
+    }
+    .entry.selected .entry-index { background: #3b82f6; color: #fff; }
+    .entry-text {
+      flex: 1;
+      font-size: 1rem;
+      word-break: break-word;
+    }
+    .entry-check {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: all 0.2s;
+    }
+    .entry.selected .entry-check { opacity: 1; background: #3b82f6; border-color: #3b82f6; }
+    
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      color: #64748b;
+      text-align: center;
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+    
+    /* Bottom action */
+    .bottom-action {
+      padding: 12px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      background: rgba(0,0,0,0.4);
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-set {
+      width: 100%;
+      padding: 18px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-set:disabled { 
+      background: #1e293b; 
+      color: #475569; 
+      cursor: not-allowed; 
+      box-shadow: none;
+    }
+    .btn-set:not(:disabled):active { 
+      transform: scale(0.98); 
+      box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+    }
+    .btn-set.success {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+    }
+    
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      background: #22c55e;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1000;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span class="status-dot" id="statusDot"></span> Wheel Remote</h1>
+    <button class="refresh-btn" onclick="location.reload()" title="Refresh">↻</button>
+  </div>
+  
+  <div class="main">
+    <div class="selected-card">
+      <button class="cancel-btn" id="cancelSelectBtn" onclick="cancelSelection()">✕</button>
+      <div class="selected-label">Next Winner</div>
+      <div id="selectedName" class="selected-name none">Tap a name below</div>
+    </div>
+    
+    <div class="search-container">
+      <input type="text" id="search" class="search-box" placeholder="🔍  Search names...">
+      <button class="clear-btn" id="clearBtn" onclick="clearSearch()">✕</button>
+    </div>
+    
+    <div class="list-header">
+      <span id="count" class="count">Loading...</span>
+    </div>
+    
+    <div id="entriesList" class="entries-list"></div>
+  </div>
+  
+  <div class="bottom-action">
+    <button id="setBtn" class="btn-set" disabled>
+      <span id="btnIcon">🎯</span>
+      <span id="btnText">Select a name first</span>
+    </button>
+  </div>
+  
+  <div class="toast" id="toast">✓ Winner Set!</div>
+  
+  <script>
+    const ws = new WebSocket('ws://${localIP}:${port}');
+    let entries = [];
+    let selectedIndex = null;
+    
+    const statusDot = document.getElementById('statusDot');
+    const searchEl = document.getElementById('search');
+    const clearBtn = document.getElementById('clearBtn');
+    const listEl = document.getElementById('entriesList');
+    const countEl = document.getElementById('count');
+    const selectedNameEl = document.getElementById('selectedName');
+    const cancelSelectBtn = document.getElementById('cancelSelectBtn');
+    const setBtnEl = document.getElementById('setBtn');
+    const btnIcon = document.getElementById('btnIcon');
+    const btnText = document.getElementById('btnText');
+    const toast = document.getElementById('toast');
+    
+    ws.onopen = () => {
+      statusDot.classList.add('connected');
+      ws.send(JSON.stringify({ type: 'register', role: 'remote' }));
+    };
+    
+    ws.onclose = () => {
+      statusDot.classList.remove('connected');
+      countEl.textContent = 'Disconnected - tap ↻ to reconnect';
+    };
+    
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'entries') {
+        entries = msg.data || [];
+        renderList();
+      }
+      if (msg.type === 'winner_set') {
+        showSuccess();
+      }
+      if (msg.type === 'winner_confirmed') {
+        showWinnerConfirmed(msg.name || 'Winner');
+      }
+    };
+    
+    function showSuccess() {
+      setBtnEl.classList.add('success');
+      btnIcon.textContent = '✓';
+      btnText.textContent = 'Queued!';
+      toast.textContent = '✓ Winner Queued - Spin the wheel!';
+      toast.style.background = '#3b82f6';
+      toast.classList.add('show');
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2000);
+      
+      setTimeout(() => {
+        setBtnEl.classList.remove('success');
+        btnIcon.textContent = '🎯';
+        btnText.textContent = 'Set Winner';
+        // Keep selection visible until spin confirms
+      }, 1500);
+    }
+    
+    function showWinnerConfirmed(winnerName) {
+      // Clear selection after winner is confirmed
+      selectedIndex = null;
+      selectedNameEl.textContent = 'Tap a name below';
+      selectedNameEl.classList.add('none');
+      cancelSelectBtn.classList.remove('visible');
+      setBtnEl.disabled = true;
+      btnText.textContent = 'Select a name first';
+      renderList();
+      
+      // Show confirmation toast
+      toast.textContent = '🎉 ' + winnerName + ' WON!';
+      toast.style.background = '#22c55e';
+      toast.classList.add('show');
+      
+      // Haptic celebration
+      if (navigator.vibrate) navigator.vibrate([50, 50, 50, 50, 100]);
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+    
+    function renderList() {
+      const query = searchEl.value.toLowerCase().trim();
+      clearBtn.classList.toggle('visible', query.length > 0);
+      
+      const filtered = entries.map((e, i) => ({ ...e, originalIndex: i }))
+        .filter(e => !query || (e.text || '').toLowerCase().includes(query));
+      
+      if (entries.length === 0) {
+        countEl.textContent = 'Waiting for wheel data...';
+      } else if (query) {
+        countEl.textContent = filtered.length + ' of ' + entries.length + ' names';
+      } else {
+        countEl.textContent = entries.length + ' names';
+      }
+      
+      listEl.innerHTML = '';
+      
+      if (filtered.length === 0 && entries.length > 0) {
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div>No matches found</div></div>';
+        return;
+      }
+      
+      if (entries.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Open the wheel on the display PC<br>to load names here</div></div>';
+        return;
+      }
+      
+      filtered.forEach(entry => {
+        const div = document.createElement('div');
+        div.className = 'entry' + (entry.originalIndex === selectedIndex ? ' selected' : '');
+        
+        const indexSpan = document.createElement('span');
+        indexSpan.className = 'entry-index';
+        indexSpan.textContent = entry.originalIndex + 1;
+        
+        const textSpan = document.createElement('span');
+        textSpan.className = 'entry-text';
+        textSpan.textContent = entry.text || 'Entry ' + (entry.originalIndex + 1);
+        
+        const checkSpan = document.createElement('span');
+        checkSpan.className = 'entry-check';
+        checkSpan.textContent = '✓';
+        
+        div.appendChild(indexSpan);
+        div.appendChild(textSpan);
+        div.appendChild(checkSpan);
+        
+        div.onclick = () => selectEntry(entry);
+        listEl.appendChild(div);
+      });
+    }
+    
+    function selectEntry(entry) {
+      selectedIndex = entry.originalIndex;
+      const name = entry.text || 'Entry ' + (entry.originalIndex + 1);
+      selectedNameEl.textContent = name;
+      selectedNameEl.classList.remove('none');
+      cancelSelectBtn.classList.add('visible');
+      setBtnEl.disabled = false;
+      btnText.textContent = 'Set Winner';
+      renderList();
+      
+      // Haptic feedback if available
+      if (navigator.vibrate) navigator.vibrate(10);
+    }
+    
+    function cancelSelection() {
+      selectedIndex = null;
+      selectedNameEl.textContent = 'Tap a name below';
+      selectedNameEl.classList.add('none');
+      cancelSelectBtn.classList.remove('visible');
+      setBtnEl.disabled = true;
+      btnText.textContent = 'Select a name first';
+      renderList();
+      
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(10);
+    }
+    
+    function clearSearch() {
+      searchEl.value = '';
+      searchEl.focus();
+      renderList();
+    }
+    
+    searchEl.addEventListener('input', renderList);
+    
+    setBtnEl.onclick = () => {
+      if (selectedIndex !== null && !setBtnEl.disabled) {
+        ws.send(JSON.stringify({ type: 'set_winner', index: selectedIndex }));
+        setBtnEl.disabled = true;
+        btnText.textContent = 'Sending...';
+        if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
+      }
+    };
+  </script>
+</body>
+</html>`;
+}
+
 async function startServer() {
   const preferred = process.env.PORT ? Number(process.env.PORT) : 8080;
-  const currentPort = preferred;
+  // FIX: Use findOpenPort for automatic port fallback
+  const currentPort = await findOpenPort(preferred, 20);
+  if (currentPort === 0) {
+    console.error(`❌ Could not find an available port starting from ${preferred}`);
+    process.exit(1);
+  }
+  if (currentPort !== preferred) {
+    console.log(`⚠️ Port ${preferred} was in use. Using port ${currentPort} instead.`);
+  }
+  
   const server = http.createServer((req, res) => {
     const safePath = decodeURIComponent(req.url.split('?')[0]);
     
@@ -75,6 +620,32 @@ async function startServer() {
       return;
     }
 
+    // Remote control page
+    if (safePath === '/remote' || safePath === '/remote/') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(getRemoteControlHTML(currentPort));
+      return;
+    }
+
+    // API endpoint to receive entries from display
+    if (safePath === '/api/entries' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          cachedEntries = data.entries || [];
+          broadcastToRemotes({ type: 'entries', data: cachedEntries });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        }
+      });
+      return;
+    }
+
     // ✅ 4. Confirm working folder and file mapping
     let filePath = path.join(OUTPUT_DIR, safePath);
     if (safePath === '/' || safePath === '') {
@@ -115,6 +686,9 @@ async function startServer() {
           // Replace Google Tag Manager script with local stub
           text = text.replace(/https?:\/\/www\.googletagmanager\.com\/gtag\/js[^"'>)\s]*/g, '/offline/gtag-stub.js');
           if (ext === '.html') {
+            // FIX: Remove Content-Security-Policy meta tags that may block injected scripts
+            text = text.replace(/<meta[^>]*http-equiv\s*=\s*["']?Content-Security-Policy["']?[^>]*>/gi, '<!-- CSP removed for offline mode -->');
+            
             const inject = "<script>!function(){try{const o=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{if(n==='href'&&typeof v==='string'&&v.includes('fonts.googleapis.com')){v='/assets/fonts/googlefonts.css'}if(n==='src'&&typeof v==='string'&&v.includes('www.googletagmanager.com/gtag/js')){v='/offline/gtag-stub.js'}}catch(e){}return o.call(this,n,v)};const a=Element.prototype.appendChild;Element.prototype.appendChild=function(node){try{if(node&&node.tagName==='LINK'){const h=node.getAttribute('href')||'';if(h.includes('fonts.googleapis.com')){node.setAttribute('href','/assets/fonts/googlefonts.css')}}if(node&&node.tagName==='SCRIPT'){const s=node.getAttribute('src')||'';if(s&&s.includes('www.googletagmanager.com/gtag/js')){node.setAttribute('src','/offline/gtag-stub.js')}}}catch(e){}return a.call(this,node)};var of=window.fetch;window.fetch=function(r,opts){try{var u=typeof r==='string'?r:r&&r.url;if(u&&u.indexOf('/api/v2/client-settings')!==-1){return Promise.resolve(new Response(JSON.stringify({ads:{enabled:false},features:{},version:1}),{status:200,headers:{'Content-Type':'application/json'}}))}}catch(e){}return of.apply(this,arguments)};window.gtag=window.gtag||function(){}}catch(e){}}();</script>";
             const inject2 = "<script>(function(){const BRAND='wheelofnames.com';let buildLabel='f93a / f93a';let observer=null;function updateBuildLabel(){try{const node=document.querySelector('.build');if(node&&node.textContent&&node.textContent.trim()){buildLabel=node.textContent.trim();}}catch(e){}}function fix(){try{updateBuildLabel();document.querySelectorAll('.q-toolbar__title h1, .q-toolbar__title').forEach(function(node){if(node.textContent!==BRAND){node.textContent=BRAND;}});document.querySelectorAll('.build').forEach(function(node){if(node.textContent!==buildLabel){node.textContent=buildLabel;}});}catch(e){}}function ensureObserver(){try{const target=document.querySelector('header')||document.body;if(!target)return;if(observer&&observer.__wonTarget===target)return;if(observer){observer.disconnect();}observer=new MutationObserver(function(){schedule();});observer.__wonTarget=target;observer.observe(target,{childList:true,subtree:true});}catch(e){}}function schedule(){fix();ensureObserver();setTimeout(function(){fix();ensureObserver();},150);setTimeout(function(){fix();ensureObserver();},500);setTimeout(function(){fix();ensureObserver();},1200);}function hookHistory(){['pushState','replaceState'].forEach(function(method){try{const original=history[method];if(!original)return;history[method]=function(){const result=original.apply(this,arguments);schedule();return result;};}catch(e){}});window.addEventListener('popstate',schedule);window.addEventListener('hashchange',schedule);}function init(){schedule();hookHistory();}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}})();</script>";
             const inject3 = "<script type=\"module\" src=\"/won-expose-engine.js\"></script><script type=\"module\" src=\"/won-spin.js\"></script>";
@@ -147,8 +721,90 @@ async function startServer() {
   server.listen(currentPort, () => {
     const addr = server.address();
     const boundPort = addr && typeof addr === 'object' ? addr.port : currentPort;
+    const localIP = getLocalIP();
     console.log(`\n🌐 Local server running → http://localhost:${boundPort}`);
+    console.log(`📱 Remote control → http://${localIP}:${boundPort}/remote`);
+    console.log(`   (Open this URL on your phone to control the wheel)`);
   });
+  
+  serverInstance = server;
+  
+  // Setup WebSocket server for remote control
+  wss = new WebSocket.Server({ server });
+  
+  wss.on('connection', (ws) => {
+    console.log('[WS] New client connected');
+    
+    ws.on('message', (message) => {
+      try {
+        const msg = JSON.parse(message.toString());
+        
+        // Client registering as display or remote
+        if (msg.type === 'register') {
+          if (msg.role === 'display') {
+            wsClients.displays.add(ws);
+            console.log('[WS] Display client registered');
+          } else if (msg.role === 'remote') {
+            wsClients.remotes.add(ws);
+            console.log('[WS] Remote client registered');
+            // Send current entries to new remote
+            if (cachedEntries.length > 0) {
+              ws.send(JSON.stringify({ type: 'entries', data: cachedEntries }));
+            }
+          }
+        }
+        
+        // Display sending entries update
+        if (msg.type === 'entries_update') {
+          cachedEntries = msg.data || [];
+          broadcastToRemotes({ type: 'entries', data: cachedEntries });
+        }
+        
+        // Remote setting winner
+        if (msg.type === 'set_winner' && typeof msg.index === 'number') {
+          console.log(`[WS] Remote set winner: index ${msg.index}`);
+          broadcastToDisplays({ type: 'set_winner', index: msg.index });
+          // Confirm to remote
+          ws.send(JSON.stringify({ type: 'winner_set', index: msg.index }));
+        }
+        
+        // Display confirming winner after spin
+        if (msg.type === 'winner_confirmed' && msg.name) {
+          console.log(`[WS] Winner confirmed: ${msg.name}`);
+          broadcastToRemotes({ type: 'winner_confirmed', name: msg.name });
+        }
+      } catch (e) {
+        console.error('[WS] Message parse error:', e.message);
+      }
+    });
+    
+    ws.on('close', () => {
+      wsClients.displays.delete(ws);
+      wsClients.remotes.delete(ws);
+      console.log('[WS] Client disconnected');
+    });
+  });
+  
+  // FIX: Add graceful shutdown handler
+  function gracefulShutdown(signal) {
+    console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+    if (serverInstance) {
+      serverInstance.close(() => {
+        console.log('✅ Server closed.');
+        process.exit(0);
+      });
+      // Force exit after 5 seconds if server doesn't close
+      setTimeout(() => {
+        console.log('⚠️ Forcing exit after timeout.');
+        process.exit(1);
+      }, 5000);
+    } else {
+      process.exit(0);
+    }
+  }
+  
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
 // ────────────────────────────────
