@@ -133,20 +133,11 @@ if ($Check) { Write-Host "`n  All checks passed!`n" -ForegroundColor Cyan; Read-
 
 Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
 
-# Admin check - give user choice to continue without admin
+# Admin check - auto-elevate in Windows Terminal
 if (-not $Test -and -not (Test-Admin)) {
-    Write-Host ""
-    Write-Host "  WARNING: Not running as Administrator" -ForegroundColor Yellow
-    Write-Host "  Some features (hosts file, SSL cert) may not work." -ForegroundColor Yellow
-    Write-Host ""
-    $choice = Read-Host "  Continue anyway? [Y/n]"
-    if ($choice -eq "n" -or $choice -eq "N") {
-        Write-Host "  Please run your terminal as Administrator and try again." -ForegroundColor Cyan
-        Read-Host "  Press Enter to exit"
-        exit 0
-    }
-    Write-Host "  Continuing without admin..." -ForegroundColor Yellow
-    $script:SkipAdmin = $true
+    Write-Host "`n  Elevating to Administrator in Windows Terminal..." -ForegroundColor Yellow
+    Start-Process wt.exe -Verb RunAs -ArgumentList "powershell -NoExit -ExecutionPolicy Bypass -Command `"Set-Location '$ScriptDir'; & '$PSCommandPath'`""
+    exit 0
 }
 
 Write-Host "`n  ─────────────────────────────────────────────────────────" -ForegroundColor Cyan
@@ -299,6 +290,7 @@ try {
     
     Write-Host "  Done!" -ForegroundColor Green
 }
+
 
 
 
