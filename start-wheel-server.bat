@@ -7,6 +7,11 @@ rem ==============================================================
 rem Wheel of Names Offline - Launcher & Manager
 rem ==============================================================
 
+rem Check for diagnostic mode
+if /I "%~1"=="--check" goto DIAGNOSTIC_MODE
+if /I "%~1"=="--diagnose" goto DIAGNOSTIC_MODE
+if /I "%~1"=="--help" goto HELP_MODE
+
 rem DEBUG: Add immediate pause to catch early errors
 if "%DEBUG_PAUSE%"=="1" pause
 
@@ -16,6 +21,169 @@ set "DEBUG_LOG=%DEBUG_LOG: =0%"
 if not exist "logs" mkdir "logs"
 echo [%date% %time%] Script started >> "%DEBUG_LOG%"
 
+rem Colors via PowerShell helper
+set "PS_GREEN=Write-Host -ForegroundColor Green"
+set "PS_YELLOW=Write-Host -ForegroundColor Yellow"
+set "PS_RED=Write-Host -ForegroundColor Red"
+set "PS_CYAN=Write-Host -ForegroundColor Cyan"
+
+rem ==============================================================
+
+rem ==============================================================
+rem PRE-FLIGHT CHECKS
+rem ==============================================================
+
+echo.
+powershell -Command "%PS_CYAN% '  🔍 PRE-FLIGHT SYSTEM CHECKS'"
+echo.
+
+rem Check Node.js installation
+echo [%date% %time%] Checking Node.js... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [1/6] ' -NoNewline; %PS_YELLOW% 'Checking Node.js...' -NoNewline"
+where node >nul 2>&1
+if %errorLevel% NEQ 0 (
+    powershell -Command "%PS_RED% ' NOT FOUND'"
+    echo.
+    powershell -Command "%PS_RED% '  ❌ Node.js is required but not installed'"
+    echo.
+    powershell -Command "%PS_YELLOW% '  📥 Please download and install Node.js:'"
+    powershell -Command "%PS_CYAN% '     https://nodejs.org'"
+    echo.
+    powershell -Command "%PS_YELLOW% '  💡 After installation, restart this script'"
+    echo.
+    powershell -Command "%PS_YELLOW% '  🔍 Current directory:'"
+    echo    %CD%
+    echo.
+    pause
+    exit /b 1
+) else (
+    for /f "tokens=*" %%i in ('node --version') do set "NODE_VERSION=%%i"
+    powershell -Command "%PS_GREEN% ' Found %NODE_VERSION%'"
+    echo [%date% %time%] Node.js version: %NODE_VERSION% >> "%DEBUG_LOG%"
+)
+
+rem Check npm installation
+echo [%date% %time%] Checking npm... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [2/6] ' -NoNewline; %PS_YELLOW% 'Checking npm...' -NoNewline"
+where npm >nul 2>&1
+if %errorLevel% NEQ 0 (
+    powershell -Command "%PS_RED% ' NOT FOUND'"
+    echo.
+    powershell -Command "%PS_RED% '  ❌ npm is required but not installed'"
+    powershell -Command "%PS_YELLOW% '  💡 npm should come with Node.js - please reinstall Node.js'"
+    pause
+    exit /b 1
+) else (
+    for /f "tokens=*" %%i in ('npm --version') do set "NPM_VERSION=%%i"
+    powershell -Command "%PS_GREEN% ' Found %NPM_VERSION%'"
+    echo [%date% %time%] npm version: %NPM_VERSION% >> "%DEBUG_LOG%"
+)
+
+rem Check package.json exists
+echo [%date% %time%] Checking package.json... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [3/6] ' -NoNewline; %PS_YELLOW% 'Checking package.json...' -NoNewline"
+if not exist "package.json" (
+    powershell -Command "%PS_RED% ' NOT FOUND'"
+    echo.
+    powershell -Command "%PS_RED% '  ❌ package.json not found in current directory'"
+    echo.
+    powershell -Command "%PS_YELLOW% '  🔍 Make sure you are running this from the project root'"
+    echo    Current directory: %CD%
+    echo.
+    powershell -Command "%PS_YELLOW% '  📁 Required files in this directory:'"
+    if exist "package.json" echo    ✓ package.json
+    if exist "clone.js" echo    ✓ clone.js
+    if exist "start-wheel-server.bat" echo    ✓ start-wheel-server.bat
+    echo.
+    pause
+    exit /b 1
+) else (
+    powershell -Command "%PS_GREEN% ' Found'"
+    echo [%date% %time%] package.json found >> "%DEBUG_LOG%"
+)
+
+rem Check dependencies
+echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [4/6] ' -NoNewline; %PS_YELLOW% 'Checking dependencies...' -NoNewline"
+if not exist "node_modules" (
+    powershell -Command "%PS_YELLOW% ' Installing...'"
+    echo [%date% %time%] Installing dependencies... >> "%DEBUG_LOG%"
+    call npm install
+    if !errorLevel! NEQ 0 (
+        powershell -Command "%PS_RED% ' FAILED'"
+        echo.
+        powershell -Command "%PS_RED% '  ❌ Failed to install dependencies'"
+        echo.
+        powershell -Command "%PS_YELLOW% '  🔧 Try these steps:'"
+        echo    1. Check internet connection
+        echo    2. Run: npm cache clean --force
+        echo    3. Run: npm install manually
+        echo    4. Check if Node.js version is compatible
+        echo.
+        powershell -Command "%PS_YELLOW% '  📋 Debug info:'"
+        echo    Node.js: %NODE_VERSION%
+        echo    npm: %NPM_VERSION%
+        echo    Directory: %CD%
+        echo.
+        pause
+        exit /b 1
+    )
+    powershell -Command "%PS_GREEN% ' Installed'"
+    echo [%date% %time%] Dependencies installed successfully >> "%DEBUG_LOG%"
+) else (
+    powershell -Command "%PS_GREEN% ' OK'"
+    echo [%date% %time%] Dependencies already exist >> "%DEBUG_LOG%"
+)
+
+rem Check clone.js exists
+echo [%date% %time%] Checking clone.js... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [5/6] ' -NoNewline; %PS_YELLOW% 'Checking clone.js...' -NoNewline"
+if not exist "clone.js" (
+    powershell -Command "%PS_RED% ' NOT FOUND'"
+    echo.
+    powershell -Command "%PS_RED% '  ❌ clone.js not found - this is the main server file'"
+    echo.
+    powershell -Command "%PS_YELLOW% '  🔍 Please ensure all project files are present'"
+    pause
+    exit /b 1
+) else (
+    powershell -Command "%PS_GREEN% ' Found'"
+    echo [%date% %time%] clone.js found >> "%DEBUG_LOG%"
+)
+
+rem Check port availability
+echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [6/6] ' -NoNewline; %PS_YELLOW% 'Checking ports 8080-8090...' -NoNewline"
+set "PORT_FOUND=0"
+for /l %%i in (8080,1,8090) do (
+    netstat -an | findstr /C:":%%i " | findstr "LISTENING" >nul 2>&1
+    if !errorLevel! NEQ 0 (
+        set "PORT_FOUND=%%i"
+        goto PORT_FOUND
+    )
+)
+:PORT_FOUND
+if "%PORT_FOUND%"=="0" (
+    powershell -Command "%PS_YELLOW% ' All in use'"
+    echo.
+    powershell -Command "%PS_RED% '  ❌ No available ports found (8080-8090)'"
+    powershell -Command "%PS_YELLOW% '  🔧 Close other applications using these ports'"
+    pause
+    exit /b 1
+) else (
+    powershell -Command "%PS_GREEN% ' Port %PORT_FOUND% available'"
+    echo [%date% %time%] Port %PORT_FOUND% available >> "%DEBUG_LOG%"
+)
+
+echo.
+powershell -Command "%PS_GREEN% '  ✅ All pre-flight checks passed!'"
+echo.
+powershell -Command "%PS_YELLOW% '  🚀 Starting Wheel of Names server...'"
+
+rem ==============================================================
+rem MAIN EXECUTION
+rem ==============================================================
+
 set "SCRIPT_PID="
 set "NODE_PID="
 set "CADDY_PID="
@@ -24,12 +192,6 @@ set "LOCAL_IP="
 
 rem Check for test mode argument
 if /I "%~1"=="test" set "TEST_MODE=1"
-
-rem Colors via PowerShell helper
-set "PS_GREEN=Write-Host -ForegroundColor Green"
-set "PS_YELLOW=Write-Host -ForegroundColor Yellow"
-set "PS_RED=Write-Host -ForegroundColor Red"
-set "PS_CYAN=Write-Host -ForegroundColor Cyan"
 
 cls
 echo.
@@ -381,14 +543,163 @@ if "%TEST_MODE%"=="1" (
     powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
 )
 
-powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
-echo.
-powershell -Command "%PS_GREEN% '  ✓ All done! Goodbye.'"
+powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'All done! Goodbye.'"
 echo.
 if "%TEST_MODE%"=="0" (
     timeout /t 2 >nul
 )
 echo [%date% %time%] Script completed successfully >> "%DEBUG_LOG%"
+exit /b 0
+
+rem ============================================================
+rem DIAGNOSTIC MODE
+rem ============================================================
+
+:DIAGNOSTIC_MODE
+echo.
+powershell -Command "Write-Host '  🔧 WHEEL OF NAMES - DIAGNOSTIC MODE' -ForegroundColor Cyan"
+echo.
+powershell -Command "Write-Host '  Running system checks without starting server...' -ForegroundColor Yellow"
+
+rem Define colors for diagnostic mode
+set "PS_GREEN=Write-Host -ForegroundColor Green"
+set "PS_YELLOW=Write-Host -ForegroundColor Yellow"
+set "PS_RED=Write-Host -ForegroundColor Red"
+set "PS_CYAN=Write-Host -ForegroundColor Cyan"
+
+echo [%date% %time%] Diagnostic mode started >> "%DEBUG_LOG%"
+
+rem Run the same pre-flight checks
+goto :PRE_FLIGHT_START
+
+:PRE_FLIGHT_START
+rem Check Node.js installation
+echo [%date% %time%] Checking Node.js... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [1/6] Checking Node.js...' -ForegroundColor Yellow -NoNewline"
+where node >nul 2>&1
+if %errorLevel% NEQ 0 (
+    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
+    powershell -Command "Write-Host '     Download from: https://nodejs.org' -ForegroundColor Red"
+) else (
+    for /f "tokens=*" %%i in ('node --version') do set "NODE_VERSION=%%i"
+    powershell -Command "Write-Host ' ✅ Found %NODE_VERSION%' -ForegroundColor Green"
+)
+
+rem Check npm installation
+echo [%date% %time%] Checking npm... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [2/6] Checking npm...' -ForegroundColor Yellow -NoNewline"
+where npm >nul 2>&1
+if %errorLevel% NEQ 0 (
+    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
+    powershell -Command "Write-Host '     Should be installed with Node.js' -ForegroundColor Red"
+) else (
+    for /f "tokens=*" %%i in ('npm --version') do set "NPM_VERSION=%%i"
+    powershell -Command "Write-Host ' ✅ Found %NPM_VERSION%' -ForegroundColor Green"
+)
+
+rem Check package.json exists
+echo [%date% %time%] Checking package.json... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [3/6] Checking package.json...' -ForegroundColor Yellow -NoNewline"
+if not exist "package.json" (
+    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
+    powershell -Command "Write-Host '     Run from project directory' -ForegroundColor Red"
+) else (
+    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
+)
+
+rem Check dependencies
+echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [4/6] Checking dependencies...' -ForegroundColor Yellow -NoNewline"
+if not exist "node_modules" (
+    powershell -Command "Write-Host ' ⚠️ NOT INSTALLED' -ForegroundColor Yellow"
+    powershell -Command "Write-Host '     Run: npm install' -ForegroundColor Yellow"
+) else (
+    powershell -Command "Write-Host ' ✅ Installed' -ForegroundColor Green"
+)
+
+rem Check clone.js exists
+echo [%date% %time%] Checking clone.js... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [5/6] Checking clone.js...' -ForegroundColor Yellow -NoNewline"
+if not exist "clone.js" (
+    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
+    powershell -Command "Write-Host '     Main server file missing' -ForegroundColor Red"
+) else (
+    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
+)
+
+rem Check port availability
+echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [6/6] Checking ports 8080-8090...' -ForegroundColor Yellow -NoNewline"
+set "PORT_FOUND=0"
+for /l %%i in (8080,1,8090) do (
+    netstat -an | findstr /C:":%%i " | findstr "LISTENING" >nul 2>&1
+    if !errorLevel! NEQ 0 (
+        set "PORT_FOUND=%%i"
+        goto :PORT_FOUND_DIAG
+    )
+)
+:PORT_FOUND_DIAG
+if "%PORT_FOUND%"=="0" (
+    powershell -Command "Write-Host ' ❌ ALL IN USE' -ForegroundColor Red"
+    powershell -Command "Write-Host '     Close other applications' -ForegroundColor Red"
+) else (
+    powershell -Command "Write-Host ' ✅ Port %PORT_FOUND% available' -ForegroundColor Green"
+)
+
+echo.
+powershell -Command "Write-Host '  📋 DIAGNOSTIC SUMMARY' -ForegroundColor Cyan"
+echo.
+powershell -Command "Write-Host '  If all checks pass ✅, run: start-wheel-server.bat' -ForegroundColor Yellow"
+powershell -Command "Write-Host '  If checks fail ❌, follow the remediation steps above' -ForegroundColor Yellow"
+echo.
+powershell -Command "Write-Host '  📁 Debug logs saved to: logs\debug-*.log' -ForegroundColor Yellow"
+echo.
+pause
+exit /b 0
+
+rem ============================================================
+rem HELP MODE
+rem ============================================================
+
+:HELP_MODE
+echo.
+powershell -Command "%PS_CYAN% '  📖 WHEEL OF NAMES - HELP'"
+echo.
+powershell -Command "%PS_YELLOW% '  USAGE:'"
+echo    start-wheel-server.bat           [Start interactive mode]
+echo    start-wheel-server.bat test      [Run automated tests]
+echo    start-wheel-server.bat --check   [Run diagnostic checks]
+echo    start-wheel-server.bat --help    [Show this help]
+echo.
+powershell -Command "%PS_YELLOW% '  TROUBLESHOOTING:'"
+echo    ❌ Script closes immediately?
+echo       → Run: start-wheel-server.bat --check
+echo       → Check Node.js installation: https://nodejs.org
+echo.
+echo    ❌ Port already in use?
+echo       → Script automatically finds next available port
+echo       → Or close other applications using ports 8080-8090
+echo.
+echo    ❌ Dependencies missing?
+echo       → Run: npm install
+echo       → Or let script install automatically
+echo.
+echo    ❌ Permission denied?
+echo       → Right-click → "Run as administrator"
+echo       → Script requests admin privileges automatically
+echo.
+powershell -Command "%PS_YELLOW% '  DEBUG MODE:'"
+echo    set DEBUG_PAUSE=1
+echo    start-wheel-server.bat
+echo.
+powershell -Command "%PS_YELLOW% '  LOGS LOCATION:'"
+echo    Debug logs: logs\debug-*.log
+echo    Server logs: logs\node_server.log
+echo    Caddy logs: logs\caddy.log
+echo.
+powershell -Command "%PS_CYAN% '  🌐 For more help: https://github.com/elstonyth/Wheel-of-Name---Offline'"
+echo.
+pause
 exit /b 0
 
 rem ============================================================
