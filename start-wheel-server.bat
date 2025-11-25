@@ -14,12 +14,15 @@ set "NODE_ARCH=win-x64"
 set "PORTABLE_NODE_DIR=node-portable"
 set "NODE_ZIP=node-v%NODE_VERSION%-%NODE_ARCH%.zip"
 set "NODE_URL=https://nodejs.org/dist/v%NODE_VERSION%/%NODE_ZIP%"
+set "CADDY_VERSION=2.8.4"
+set "CADDY_ZIP=caddy_%CADDY_VERSION%_windows_amd64.zip"
+set "CADDY_URL=https://github.com/caddyserver/caddy/releases/download/v%CADDY_VERSION%/%CADDY_ZIP%"
 
 pushd "%SCRIPT_DIR%" >nul 2>&1
-if %errorLevel% NEQ 0 (
+if errorLevel 1 (
     echo.
-    echo   ✗ Failed to switch to script directory: %SCRIPT_DIR%
-    echo   Please extract all files to a local folder (e.g., Desktop) and try again.
+    echo   X Failed to switch to script directory: %SCRIPT_DIR%
+    echo   Please extract all files to a local folder and try again.
     pause
     exit /b 1
 )
@@ -28,9 +31,8 @@ set "PROJECT_ROOT=%CD%"
 rem DEBUG: Add immediate pause to catch early errors
 if "%DEBUG_PAUSE%"=="1" pause
 
-rem DEBUG: Create debug log
-set "DEBUG_LOG=logs\debug-%date:~-4,4%%date:~-10,2%%date:~-7,2%-%time:~0,2%%time:~3,2%%time:~6,2%.log"
-set "DEBUG_LOG=%DEBUG_LOG: =0%"
+rem Create debug log
+set "DEBUG_LOG=logs\debug.log"
 if not exist "logs" mkdir "logs"
 echo [%date% %time%] Script started >> "%DEBUG_LOG%"
 
@@ -54,51 +56,87 @@ echo.
 powershell -Command "%PS_CYAN% '  🔍 PRE-FLIGHT SYSTEM CHECKS'"
 echo.
 
-rem Check Node.js installation
+rem Check Node.js installation (system or portable)
 echo [%date% %time%] Checking Node.js... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [1/6] ' -NoNewline; %PS_YELLOW% 'Checking Node.js...' -NoNewline"
+powershell -Command "Write-Host '  [1/7] ' -NoNewline; %PS_YELLOW% 'Checking Node.js...' -NoNewline"
+set "USE_PORTABLE_NODE=0"
 where node >nul 2>&1
+if %errorLevel% EQU 0 goto FOUND_SYSTEM_NODE
+rem System Node.js not found, check for portable
+if exist "%PORTABLE_NODE_DIR%\node.exe" goto FOUND_PORTABLE_NODE
+rem No Node.js found, auto-download portable
+goto DOWNLOAD_NODE
+
+:FOUND_SYSTEM_NODE
+for /f "tokens=*" %%i in ('node --version') do set "NODE_VER=%%i"
+powershell -Command "%PS_GREEN% ' Found !NODE_VER!'"
+echo [%date% %time%] Node.js version: !NODE_VER! >> "%DEBUG_LOG%"
+goto NODE_CHECK_DONE
+
+:FOUND_PORTABLE_NODE
+set "USE_PORTABLE_NODE=1"
+set "PATH=%~dp0%PORTABLE_NODE_DIR%;%PATH%"
+for /f "tokens=*" %%i in ('"%PORTABLE_NODE_DIR%\node.exe" --version') do set "NODE_VER=%%i"
+powershell -Command "%PS_GREEN% ' Found !NODE_VER! (portable)'"
+echo [%date% %time%] Using portable Node.js: !NODE_VER! >> "%DEBUG_LOG%"
+goto NODE_CHECK_DONE
+
+:DOWNLOAD_NODE
+powershell -Command "%PS_YELLOW% ' Downloading...'"
+echo [%date% %time%] Node.js not found, downloading portable... >> "%DEBUG_LOG%"
+call :download_nodejs
 if %errorLevel% NEQ 0 (
-    powershell -Command "%PS_RED% ' NOT FOUND'"
-    echo.
-    powershell -Command "%PS_RED% '  ❌ Node.js is required but not installed'"
-    echo.
-    powershell -Command "%PS_YELLOW% '  📥 Please download and install Node.js:'"
-    powershell -Command "%PS_CYAN% '     https://nodejs.org'"
-    echo.
-    powershell -Command "%PS_YELLOW% '  💡 After installation, restart this script'"
-    echo.
-    powershell -Command "%PS_YELLOW% '  🔍 Current directory:'"
-    echo    %CD%
-    echo.
+    powershell -Command "%PS_RED% '  ❌ Failed to download Node.js'"
+    powershell -Command "%PS_YELLOW% '  📥 Manual install: https://nodejs.org'"
     pause
     exit /b 1
-) else (
-    for /f "tokens=*" %%i in ('node --version') do set "NODE_VERSION=%%i"
-    powershell -Command "%PS_GREEN% ' Found %NODE_VERSION%'"
-    echo [%date% %time%] Node.js version: %NODE_VERSION% >> "%DEBUG_LOG%"
 )
+set "USE_PORTABLE_NODE=1"
+set "PATH=%~dp0%PORTABLE_NODE_DIR%;%PATH%"
+for /f "tokens=*" %%i in ('"%PORTABLE_NODE_DIR%\node.exe" --version') do set "NODE_VER=%%i"
+powershell -Command "Write-Host '  [1/7] ' -NoNewline; %PS_GREEN% 'Node.js !NODE_VER! installed (portable)'"
+echo [%date% %time%] Portable Node.js installed: !NODE_VER! >> "%DEBUG_LOG%"
+
+:NODE_CHECK_DONE
 
 rem Check npm installation
 echo [%date% %time%] Checking npm... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [2/6] ' -NoNewline; %PS_YELLOW% 'Checking npm...' -NoNewline"
+powershell -Command "Write-Host '  [2/7] ' -NoNewline; %PS_YELLOW% 'Checking npm...' -NoNewline"
+if "%USE_PORTABLE_NODE%"=="1" goto CHECK_PORTABLE_NPM
+goto CHECK_SYSTEM_NPM
+
+:CHECK_PORTABLE_NPM
+if exist "%PORTABLE_NODE_DIR%\npm.cmd" (
+    for /f "tokens=*" %%i in ('call "%PORTABLE_NODE_DIR%\npm.cmd" --version') do set "NPM_VERSION=%%i"
+    powershell -Command "%PS_GREEN% ' Found !NPM_VERSION! (portable)'"
+    echo [%date% %time%] npm version: !NPM_VERSION! >> "%DEBUG_LOG%"
+) else (
+    powershell -Command "%PS_RED% ' NOT FOUND'"
+    powershell -Command "%PS_RED% '  ❌ npm not found in portable Node.js'"
+    pause
+    exit /b 1
+)
+goto NPM_CHECK_DONE
+
+:CHECK_SYSTEM_NPM
 where npm >nul 2>&1
 if %errorLevel% NEQ 0 (
     powershell -Command "%PS_RED% ' NOT FOUND'"
-    echo.
     powershell -Command "%PS_RED% '  ❌ npm is required but not installed'"
     powershell -Command "%PS_YELLOW% '  💡 npm should come with Node.js - please reinstall Node.js'"
     pause
     exit /b 1
 ) else (
     for /f "tokens=*" %%i in ('npm --version') do set "NPM_VERSION=%%i"
-    powershell -Command "%PS_GREEN% ' Found %NPM_VERSION%'"
-    echo [%date% %time%] npm version: %NPM_VERSION% >> "%DEBUG_LOG%"
+    powershell -Command "%PS_GREEN% ' Found !NPM_VERSION!'"
+    echo [%date% %time%] npm version: !NPM_VERSION! >> "%DEBUG_LOG%"
 )
+
+:NPM_CHECK_DONE
 
 rem Check package.json exists
 echo [%date% %time%] Checking package.json... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [3/6] ' -NoNewline; %PS_YELLOW% 'Checking package.json...' -NoNewline"
+powershell -Command "Write-Host '  [3/7] ' -NoNewline; %PS_YELLOW% 'Checking package.json...' -NoNewline"
 if not exist "package.json" (
     powershell -Command "%PS_RED% ' NOT FOUND'"
     echo.
@@ -121,7 +159,7 @@ if not exist "package.json" (
 
 rem Check dependencies
 echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [4/6] ' -NoNewline; %PS_YELLOW% 'Checking dependencies...' -NoNewline"
+powershell -Command "Write-Host '  [4/7] ' -NoNewline; %PS_YELLOW% 'Checking dependencies...' -NoNewline"
 if not exist "node_modules" (
     powershell -Command "%PS_YELLOW% ' Installing...'"
     echo [%date% %time%] Installing dependencies... >> "%DEBUG_LOG%"
@@ -154,7 +192,7 @@ if not exist "node_modules" (
 
 rem Check clone.js exists
 echo [%date% %time%] Checking clone.js... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [5/6] ' -NoNewline; %PS_YELLOW% 'Checking clone.js...' -NoNewline"
+powershell -Command "Write-Host '  [5/7] ' -NoNewline; %PS_YELLOW% 'Checking clone.js...' -NoNewline"
 if not exist "clone.js" (
     powershell -Command "%PS_RED% ' NOT FOUND'"
     echo.
@@ -168,18 +206,32 @@ if not exist "clone.js" (
     echo [%date% %time%] clone.js found >> "%DEBUG_LOG%"
 )
 
-rem Check port availability
-echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [6/6] ' -NoNewline; %PS_YELLOW% 'Checking ports 8080-8090...' -NoNewline"
-set "PORT_FOUND=0"
-for /l %%i in (8080,1,8090) do (
-    netstat -an | findstr /C:":%%i " | findstr "LISTENING" >nul 2>&1
-    if !errorLevel! NEQ 0 (
-        set "PORT_FOUND=%%i"
-        goto PORT_FOUND
-    )
+rem Check Caddy.exe exists (auto-download if missing)
+echo [%date% %time%] Checking Caddy... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [6/7] ' -NoNewline; %PS_YELLOW% 'Checking Caddy...' -NoNewline"
+if exist "caddy.exe" goto CADDY_EXISTS
+powershell -Command "%PS_YELLOW% ' Downloading...'"
+echo [%date% %time%] Caddy not found, downloading... >> "%DEBUG_LOG%"
+call :download_caddy
+if %errorLevel% NEQ 0 (
+    powershell -Command "%PS_RED% '  ❌ Failed to download Caddy'"
+    powershell -Command "%PS_YELLOW% '  📥 Manual download: https://caddyserver.com/download'"
+    pause
+    exit /b 1
 )
-:PORT_FOUND
+powershell -Command "Write-Host '  [6/7] ' -NoNewline; %PS_GREEN% 'Caddy installed'"
+echo [%date% %time%] Caddy installed successfully >> "%DEBUG_LOG%"
+goto CADDY_CHECK_DONE
+:CADDY_EXISTS
+powershell -Command "%PS_GREEN% ' Found'"
+echo [%date% %time%] Caddy found >> "%DEBUG_LOG%"
+:CADDY_CHECK_DONE
+
+rem Check port availability using PowerShell (simpler approach)
+echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [7/7] ' -NoNewline; %PS_YELLOW% 'Checking ports 8080-8090...' -NoNewline"
+for /f %%p in ('powershell -Command "foreach ($p in 8080..8090) { $c = New-Object System.Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1', $p); $c.Close() } catch { Write-Output $p; break } }"') do set "PORT_FOUND=%%p"
+if "%PORT_FOUND%"=="" set "PORT_FOUND=0"
 if "%PORT_FOUND%"=="0" (
     powershell -Command "%PS_YELLOW% ' All in use'"
     echo.
@@ -188,8 +240,8 @@ if "%PORT_FOUND%"=="0" (
     pause
     exit /b 1
 ) else (
-    powershell -Command "%PS_GREEN% ' Port %PORT_FOUND% available'"
-    echo [%date% %time%] Port %PORT_FOUND% available >> "%DEBUG_LOG%"
+    powershell -Command "%PS_GREEN% ' Port !PORT_FOUND! available'"
+    echo [%date% %time%] Port !PORT_FOUND! available >> "%DEBUG_LOG%"
 )
 
 echo.
@@ -593,72 +645,82 @@ rem Run the same pre-flight checks
 goto :PRE_FLIGHT_START
 
 :PRE_FLIGHT_START
-rem Check Node.js installation
+rem Check Node.js installation (system or portable)
 echo [%date% %time%] Checking Node.js... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [1/6] Checking Node.js...' -ForegroundColor Yellow -NoNewline"
+powershell -Command "Write-Host '  [1/7] Checking Node.js...' -ForegroundColor Yellow -NoNewline"
 where node >nul 2>&1
-if %errorLevel% NEQ 0 (
-    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
-    powershell -Command "Write-Host '     Download from: https://nodejs.org' -ForegroundColor Red"
-) else (
-    for /f "tokens=*" %%i in ('node --version') do set "NODE_VERSION=%%i"
-    powershell -Command "Write-Host ' ✅ Found %NODE_VERSION%' -ForegroundColor Green"
-)
+if %errorLevel% EQU 0 goto DIAG_NODE_SYSTEM
+if exist "node-portable\node.exe" goto DIAG_NODE_PORTABLE
+powershell -Command "Write-Host ' ⚠️ NOT FOUND (will auto-download)' -ForegroundColor Yellow"
+goto DIAG_NODE_DONE
+:DIAG_NODE_SYSTEM
+for /f "tokens=*" %%i in ('node --version') do set "NODE_VER=%%i"
+powershell -Command "Write-Host ' ✅ Found !NODE_VER!' -ForegroundColor Green"
+goto DIAG_NODE_DONE
+:DIAG_NODE_PORTABLE
+for /f "tokens=*" %%i in ('"node-portable\node.exe" --version') do set "NODE_VER=%%i"
+powershell -Command "Write-Host ' ✅ Found !NODE_VER! (portable)' -ForegroundColor Green"
+:DIAG_NODE_DONE
 
 rem Check npm installation
 echo [%date% %time%] Checking npm... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [2/6] Checking npm...' -ForegroundColor Yellow -NoNewline"
+powershell -Command "Write-Host '  [2/7] Checking npm...' -ForegroundColor Yellow -NoNewline"
 where npm >nul 2>&1
-if %errorLevel% NEQ 0 (
-    powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
-    powershell -Command "Write-Host '     Should be installed with Node.js' -ForegroundColor Red"
-) else (
-    for /f "tokens=*" %%i in ('npm --version') do set "NPM_VERSION=%%i"
-    powershell -Command "Write-Host ' ✅ Found %NPM_VERSION%' -ForegroundColor Green"
-)
+if %errorLevel% EQU 0 goto DIAG_NPM_SYSTEM
+if exist "node-portable\npm.cmd" goto DIAG_NPM_PORTABLE
+powershell -Command "Write-Host ' ⚠️ NOT FOUND (will auto-download with Node.js)' -ForegroundColor Yellow"
+goto DIAG_NPM_DONE
+:DIAG_NPM_SYSTEM
+for /f "tokens=*" %%i in ('npm --version') do set "NPM_VER=%%i"
+powershell -Command "Write-Host ' ✅ Found !NPM_VER!' -ForegroundColor Green"
+goto DIAG_NPM_DONE
+:DIAG_NPM_PORTABLE
+powershell -Command "Write-Host ' ✅ Found (portable)' -ForegroundColor Green"
+:DIAG_NPM_DONE
 
 rem Check package.json exists
 echo [%date% %time%] Checking package.json... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [3/6] Checking package.json...' -ForegroundColor Yellow -NoNewline"
-if not exist "package.json" (
+powershell -Command "Write-Host '  [3/7] Checking package.json...' -ForegroundColor Yellow -NoNewline"
+if exist "package.json" (
+    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
+) else (
     powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
     powershell -Command "Write-Host '     Run from project directory' -ForegroundColor Red"
-) else (
-    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
 )
 
 rem Check dependencies
 echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [4/6] Checking dependencies...' -ForegroundColor Yellow -NoNewline"
-if not exist "node_modules" (
-    powershell -Command "Write-Host ' ⚠️ NOT INSTALLED' -ForegroundColor Yellow"
-    powershell -Command "Write-Host '     Run: npm install' -ForegroundColor Yellow"
-) else (
+powershell -Command "Write-Host '  [4/7] Checking dependencies...' -ForegroundColor Yellow -NoNewline"
+if exist "node_modules" (
     powershell -Command "Write-Host ' ✅ Installed' -ForegroundColor Green"
+) else (
+    powershell -Command "Write-Host ' ⚠️ NOT INSTALLED (will auto-install)' -ForegroundColor Yellow"
 )
 
 rem Check clone.js exists
 echo [%date% %time%] Checking clone.js... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [5/6] Checking clone.js...' -ForegroundColor Yellow -NoNewline"
-if not exist "clone.js" (
+powershell -Command "Write-Host '  [5/7] Checking clone.js...' -ForegroundColor Yellow -NoNewline"
+if exist "clone.js" (
+    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
+) else (
     powershell -Command "Write-Host ' ❌ NOT FOUND' -ForegroundColor Red"
     powershell -Command "Write-Host '     Main server file missing' -ForegroundColor Red"
-) else (
-    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
 )
 
-rem Check port availability
-echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [6/6] Checking ports 8080-8090...' -ForegroundColor Yellow -NoNewline"
-set "PORT_FOUND=0"
-for /l %%i in (8080,1,8090) do (
-    netstat -an | findstr /C:":%%i " | findstr "LISTENING" >nul 2>&1
-    if !errorLevel! NEQ 0 (
-        set "PORT_FOUND=%%i"
-        goto :PORT_FOUND_DIAG
-    )
+rem Check Caddy exists
+echo [%date% %time%] Checking Caddy... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [6/7] Checking Caddy...' -ForegroundColor Yellow -NoNewline"
+if exist "caddy.exe" (
+    powershell -Command "Write-Host ' ✅ Found' -ForegroundColor Green"
+) else (
+    powershell -Command "Write-Host ' ⚠️ NOT FOUND (will auto-download)' -ForegroundColor Yellow"
 )
-:PORT_FOUND_DIAG
+
+rem Check port availability using PowerShell (simpler, avoids batch issues)
+echo [%date% %time%] Checking port availability... >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [7/7] Checking ports 8080-8090...' -ForegroundColor Yellow -NoNewline"
+for /f %%p in ('powershell -Command "foreach ($p in 8080..8090) { $c = New-Object System.Net.Sockets.TcpClient; try { $c.Connect('127.0.0.1', $p); $c.Close() } catch { Write-Output $p; break } }"') do set "PORT_FOUND=%%p"
+if "%PORT_FOUND%"=="" set "PORT_FOUND=0"
 if "%PORT_FOUND%"=="0" (
     powershell -Command "Write-Host ' ❌ ALL IN USE' -ForegroundColor Red"
     powershell -Command "Write-Host '     Close other applications' -ForegroundColor Red"
@@ -669,10 +731,14 @@ if "%PORT_FOUND%"=="0" (
 echo.
 powershell -Command "Write-Host '  📋 DIAGNOSTIC SUMMARY' -ForegroundColor Cyan"
 echo.
-powershell -Command "Write-Host '  If all checks pass ✅, run: start-wheel-server.bat' -ForegroundColor Yellow"
-powershell -Command "Write-Host '  If checks fail ❌, follow the remediation steps above' -ForegroundColor Yellow"
+powershell -Command "Write-Host '  ✅ = Ready' -ForegroundColor Green"
+powershell -Command "Write-Host '  ⚠️  = Will auto-download/install when you run the script' -ForegroundColor Yellow"
+powershell -Command "Write-Host '  ❌ = Critical file missing (must fix manually)' -ForegroundColor Red"
 echo.
-powershell -Command "Write-Host '  📁 Debug logs saved to: logs\debug-*.log' -ForegroundColor Yellow"
+powershell -Command "Write-Host '  Run: start-wheel-server.bat' -ForegroundColor Cyan"
+powershell -Command "Write-Host '  Everything except custom URL is fully automated!' -ForegroundColor Green"
+echo.
+powershell -Command "Write-Host '  📁 Debug logs: logs\debug-*.log' -ForegroundColor Yellow"
 echo.
 pause
 exit /b 0
@@ -691,21 +757,22 @@ echo    start-wheel-server.bat test      [Run automated tests]
 echo    start-wheel-server.bat --check   [Run diagnostic checks]
 echo    start-wheel-server.bat --help    [Show this help]
 echo.
+powershell -Command "%PS_GREEN% '  ✨ NEW PC? JUST RUN THE SCRIPT!'"
+echo    The script automatically downloads and installs:
+echo      • Node.js (portable, ~30MB)
+echo      • Caddy web server (~45MB)
+echo      • All npm dependencies
+echo.
+echo    Only interactive prompt: Custom domain name (default: wheel.local)
+echo.
 powershell -Command "%PS_YELLOW% '  TROUBLESHOOTING:'"
 echo    ❌ Script closes immediately?
 echo       → Run: start-wheel-server.bat --check
-echo       → Check Node.js installation: https://nodejs.org
 echo.
 echo    ❌ Port already in use?
-echo       → Script automatically finds next available port
-echo       → Or close other applications using ports 8080-8090
-echo.
-echo    ❌ Dependencies missing?
-echo       → Run: npm install
-echo       → Or let script install automatically
+echo       → Script automatically finds next available port (8080-8100)
 echo.
 echo    ❌ Permission denied?
-echo       → Right-click → "Run as administrator"
 echo       → Script requests admin privileges automatically
 echo.
 powershell -Command "%PS_YELLOW% '  DEBUG MODE:'"
@@ -742,3 +809,46 @@ if %_elapsed% GEQ %_timeout% (
 )
 timeout /t 1 /nobreak >nul
 goto wait_loop_inner
+
+:download_nodejs
+rem Downloads and extracts portable Node.js
+echo    Downloading Node.js v%NODE_VERSION% (~30MB)...
+powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_ZIP%' -UseBasicParsing } catch { Write-Host 'Download failed:' $_.Exception.Message; exit 1 }"
+if %errorLevel% NEQ 0 (
+    echo [%date% %time%] Node.js download failed >> "%DEBUG_LOG%"
+    exit /b 1
+)
+echo    Extracting...
+powershell -Command "Expand-Archive -Path '%NODE_ZIP%' -DestinationPath '.' -Force"
+if %errorLevel% NEQ 0 (
+    del "%NODE_ZIP%" 2>nul
+    echo [%date% %time%] Node.js extraction failed >> "%DEBUG_LOG%"
+    exit /b 1
+)
+rem Rename extracted folder to node-portable
+if exist "node-v%NODE_VERSION%-%NODE_ARCH%" (
+    if exist "%PORTABLE_NODE_DIR%" rd /s /q "%PORTABLE_NODE_DIR%"
+    ren "node-v%NODE_VERSION%-%NODE_ARCH%" "%PORTABLE_NODE_DIR%"
+)
+del "%NODE_ZIP%" 2>nul
+echo [%date% %time%] Node.js portable installed >> "%DEBUG_LOG%"
+exit /b 0
+
+:download_caddy
+rem Downloads and extracts Caddy server
+echo    Downloading Caddy v%CADDY_VERSION% (~45MB)...
+powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%CADDY_URL%' -OutFile '%CADDY_ZIP%' -UseBasicParsing } catch { Write-Host 'Download failed:' $_.Exception.Message; exit 1 }"
+if %errorLevel% NEQ 0 (
+    echo [%date% %time%] Caddy download failed >> "%DEBUG_LOG%"
+    exit /b 1
+)
+echo    Extracting...
+powershell -Command "Expand-Archive -Path '%CADDY_ZIP%' -DestinationPath '.' -Force"
+if %errorLevel% NEQ 0 (
+    del "%CADDY_ZIP%" 2>nul
+    echo [%date% %time%] Caddy extraction failed >> "%DEBUG_LOG%"
+    exit /b 1
+)
+del "%CADDY_ZIP%" 2>nul
+echo [%date% %time%] Caddy installed >> "%DEBUG_LOG%"
+exit /b 0
