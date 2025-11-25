@@ -18,6 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "dns2": "^2.1.0",
     "fs-extra": "^11.3.2",
     "puppeteer": "^24.29.1",
     "qrcode-terminal": "^0.12.0",

@@ -473,7 +473,7 @@ if "%TEST_MODE%"=="1" (
     powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
 )
 set "NODE_LOG=%LOG_DIR%\node_server.log"
-start /B cmd /c "set PORT=%PORT% && node clone.js serve > "%NODE_LOG%" 2>&1"
+start /B cmd /c "set PORT=!PORT! && set CUSTOM_HOST=!HOSTNAME! && node clone.js serve > "%NODE_LOG%" 2>&1"
 
 rem Wait briefly and get Node PID
 timeout /t 2 /nobreak >nul

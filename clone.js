@@ -15,6 +15,84 @@ try {
   qrcode = null; // Optional dependency
 }
 
+// DNS server for custom hostname resolution
+let DNS2;
+try {
+  DNS2 = require('dns2');
+} catch (e) {
+  DNS2 = null;
+}
+
+let dnsServer = null;
+let customHostname = null;
+
+// Start DNS server for custom hostname
+function startDnsServer(hostname, localIP) {
+  if (!DNS2) {
+    console.log('⚠️  DNS server not available (dns2 not installed)');
+    return false;
+  }
+  
+  customHostname = hostname.toLowerCase();
+  const { Packet } = DNS2;
+  
+  const server = DNS2.createServer({
+    udp: true,
+    handle: async (request, send, rinfo) => {
+      const response = Packet.createResponseFromRequest(request);
+      const [question] = request.questions;
+      const name = question.name.toLowerCase();
+      
+      // Resolve custom hostname to local IP
+      if (name === customHostname || name === customHostname + '.') {
+        response.answers.push({
+          name: question.name,
+          type: Packet.TYPE.A,
+          class: Packet.CLASS.IN,
+          ttl: 300,
+          address: localIP
+        });
+        send(response);
+        return;
+      }
+      
+      // Forward other queries to upstream DNS (Google)
+      try {
+        const resolver = new DNS2({ dns: '8.8.8.8' });
+        const result = await resolver.resolveA(name);
+        result.answers.forEach(answer => {
+          response.answers.push(answer);
+        });
+      } catch (e) {
+        // No answer found
+      }
+      send(response);
+    }
+  });
+  
+  server.on('error', (err) => {
+    if (err.code === 'EACCES' || err.code === 'EADDRINUSE') {
+      console.log('⚠️  DNS server needs admin rights or port 53 is in use');
+      return;
+    }
+    console.error('DNS error:', err.message);
+  });
+  
+  try {
+    server.listen({ udp: 53 });
+    dnsServer = server;
+    console.log(`🌐 DNS server running → ${customHostname} resolves to ${localIP}`);
+    console.log(`\n📋 TO USE ON OTHER DEVICES:`);
+    console.log(`   1. Go to WiFi settings on your phone/device`);
+    console.log(`   2. Change DNS to: ${localIP}`);
+    console.log(`   3. Open: http://${customHostname}/remote\n`);
+    return true;
+  } catch (e) {
+    console.log('⚠️  Could not start DNS server:', e.message);
+    return false;
+  }
+}
+
 const TARGET_URL = 'https://wheelofnames.com/';
 const OUTPUT_DIR = 'cloned-site-offline';
 
@@ -742,6 +820,12 @@ async function startServer() {
     
     console.log(`\n🌐 Local server running → http://localhost:${boundPort}`);
     console.log(`📱 Remote control → ${remoteUrl}`);
+    
+    // Start DNS server if custom hostname is set
+    const hostname = process.env.HOSTNAME || process.env.CUSTOM_HOST;
+    if (hostname && hostname !== 'localhost') {
+      startDnsServer(hostname, localIP);
+    }
     
     // Display QR code for remote control
     if (qrcode) {
