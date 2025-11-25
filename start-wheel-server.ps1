@@ -136,7 +136,7 @@ Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
 # Admin check
 if (-not $Test -and -not (Test-Admin)) {
     Write-Host "`n  Requesting Administrator privileges..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -Command `"Set-Location '$ScriptDir'; & '$PSCommandPath'`""
     exit 0
 }
 
@@ -287,3 +287,4 @@ try {
     
     Write-Host "  Done!" -ForegroundColor Green
 }
+
