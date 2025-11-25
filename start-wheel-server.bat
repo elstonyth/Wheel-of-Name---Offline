@@ -41,19 +41,31 @@ powershell -Command "%PS_CYAN% '  ╚══════════════�
 echo.
 
 rem 1. Check for Administrator Privileges and Auto-Elevate
+rem Skip elevation in test mode for automated testing
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode detected, skipping admin elevation >> "%DEBUG_LOG%"
+    powershell -Command "%PS_YELLOW% '  ⚠ Test Mode: Running without admin privileges'"
+    goto SKIP_ELEVATION
+)
+
 echo [%date% %time%] Checking admin privileges... >> "%DEBUG_LOG%"
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
     echo [%date% %time%] Admin check failed, attempting elevation... >> "%DEBUG_LOG%"
     powershell -Command "%PS_YELLOW% '  ⏳ Requesting Administrator privileges...'"
-    set "_ARGS=%*"
-    echo [%date% %time%] Arguments: %_ARGS% >> "%DEBUG_LOG%"
+    echo [%date% %time%] Arguments: %* >> "%DEBUG_LOG%"
     echo [%date% %time%] Script path: %~f0 >> "%DEBUG_LOG%"
-    powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%_ARGS%' -Verb RunAs"
+    if "%~1"=="" (
+        powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    ) else (
+        powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+    )
     echo [%date% %time%] Elevation command executed, exiting... >> "%DEBUG_LOG%"
     exit /b
 )
 echo [%date% %time%] Running as administrator >> "%DEBUG_LOG%"
+
+:SKIP_ELEVATION
 
 cd /d "%~dp0"
 echo [%date% %time%] Changed directory to: %CD% >> "%DEBUG_LOG%"
@@ -120,8 +132,10 @@ if not exist "node_modules" (
 
 rem 4. Set Hostname (skip prompt in test mode)
 if "%TEST_MODE%"=="1" (
-    set "HOSTNAME=wheel.local"
-    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: wheel.local (test mode)'"
+    set "HOSTNAME=localhost"
+    echo [%date% %time%] Test mode: using localhost >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: localhost (test mode)'"
+    goto SKIP_HOSTS_SETUP
 ) else (
     echo.
     powershell -Command "%PS_CYAN% '  ┌──────────────────────────────────────────────────────┐'"
@@ -135,7 +149,7 @@ if "%TEST_MODE%"=="1" (
     powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: %HOSTNAME%'"
 )
 
-rem 4. Update Hosts File
+rem 4. Update Hosts File (skip in test mode)
 set "HOSTS_FILE=%SystemRoot%\System32\drivers\etc\hosts"
 powershell -Command "Write-Host '  [4/8] ' -NoNewline; %PS_YELLOW% 'Updating hosts file...' -NoNewline"
 findstr /C:"127.0.0.1 %HOSTNAME%" "%HOSTS_FILE%" >nul 2>&1
@@ -146,6 +160,8 @@ if %errorLevel% NEQ 0 (
 ) else (
     powershell -Command "%PS_GREEN% ' OK (exists)'"
 )
+
+:SKIP_HOSTS_SETUP
 
 rem 5. Check if port 8080 is available
 set "PORT=8080"
@@ -162,7 +178,13 @@ if %errorLevel% EQU 0 (
 )
 powershell -Command "Write-Host '  [5/8] ' -NoNewline; %PS_GREEN% 'Port %PORT% available'"
 
-rem 6. Generate Dynamic Caddyfile with HTTPS support
+rem 6. Generate Dynamic Caddyfile with HTTPS support (skip in test mode)
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode: skipping Caddy setup >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Skipping Caddy (test mode)'"
+    goto SKIP_CADDY_SETUP
+)
+
 (
     echo {
     echo     auto_https disable_redirects
@@ -183,11 +205,19 @@ rem 6. Generate Dynamic Caddyfile with HTTPS support
 ) > Caddyfile
 powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Caddyfile generated'"
 
+:SKIP_CADDY_SETUP
+
 rem 7. Setup logs directory
 set "LOG_DIR=logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
-rem 8. Trust Caddy certificate (with error handling)
+rem 8. Trust Caddy certificate (with error handling) - skip in test mode
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode: skipping certificate trust >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  [7/8] ' -NoNewline; %PS_GREEN% 'Skipping certificate trust (test mode)'"
+    goto SKIP_CERT_TRUST
+)
+
 powershell -Command "Write-Host '  [7/8] ' -NoNewline; %PS_YELLOW% 'Trusting SSL certificate...' -NoNewline"
 if not exist "caddy.exe" (
     powershell -Command "%PS_RED% ' FAILED (caddy.exe not found)'"
@@ -201,8 +231,15 @@ if %errorLevel% NEQ 0 (
     powershell -Command "%PS_GREEN% ' Done'"
 )
 
+:SKIP_CERT_TRUST
+
 rem 9. Start Node Server
-powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode: starting Node server only >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting Node server (test mode)...' -NoNewline"
+) else (
+    powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
+)
 set "NODE_LOG=%LOG_DIR%\node_server.log"
 start /B cmd /c "set PORT=%PORT% && node clone.js serve > "%NODE_LOG%" 2>&1"
 
@@ -212,7 +249,13 @@ for /f "tokens=2" %%a in ('tasklist /fi "imagename eq node.exe" /fo list ^| find
     set "NODE_PID=%%a"
 )
 
-rem 10. Start Caddy
+rem 10. Start Caddy (skip in test mode)
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode: skipping Caddy startup >> "%DEBUG_LOG%"
+    powershell -Command "%PS_GREEN% ' Node server started'"
+    goto SKIP_CADDY_START
+)
+
 set "CADDY_LOG=%LOG_DIR%\caddy.log"
 start /B cmd /c "caddy.exe run --config Caddyfile > "%CADDY_LOG%" 2>&1"
 
@@ -240,6 +283,8 @@ set "GUARDIAN_SCRIPT=%LOG_DIR%\guardian.ps1"
     echo }
 ) > "%GUARDIAN_SCRIPT%"
 start /B /MIN powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%GUARDIAN_SCRIPT%"
+
+:SKIP_CADDY_START
 
 rem 12. Wait for Services
 call :wait_for_port %PORT% 30
@@ -323,8 +368,18 @@ powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Writ
 
 powershell -Command "Write-Host '  ⏳ ' -NoNewline; Write-Host 'Restoring hosts file...'"
 rem FIX: Escape hostname for regex (periods become literal)
-set "ESCAPED_HOSTNAME=%HOSTNAME:.=\.%"
-powershell -Command "$escaped = [regex]::Escape('127.0.0.1 %HOSTNAME%'); (Get-Content '%HOSTS_FILE%') | Where-Object { $_ -notmatch $escaped } | Set-Content '%HOSTS_FILE%'"
+rem Skip hosts file cleanup in test mode or when HOSTS_FILE is empty
+if "%TEST_MODE%"=="1" (
+    echo [%date% %time%] Test mode: skipping hosts file cleanup >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file cleanup skipped (test mode)'"
+) else if "%HOSTS_FILE%"=="" (
+    echo [%date% %time%] Hosts file path is empty, skipping cleanup >> "%DEBUG_LOG%"
+    powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file cleanup skipped (no path)'"
+) else (
+    set "ESCAPED_HOSTNAME=%HOSTNAME:.=\.%"
+    powershell -Command "$escaped = [regex]::Escape('127.0.0.1 %HOSTNAME%'); (Get-Content '%HOSTS_FILE%') | Where-Object { $_ -notmatch $escaped } | Set-Content '%HOSTS_FILE%'"
+    powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
+)
 
 powershell -Command "Write-Host '  ✓ ' -NoNewline -ForegroundColor Green; Write-Host 'Hosts file restored'"
 echo.
