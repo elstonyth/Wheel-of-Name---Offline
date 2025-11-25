@@ -8,6 +8,22 @@ rem Wheel of Names Offline - Launcher & Manager
 rem ==============================================================
 
 set "REQUEST=%~1"
+set "SCRIPT_DIR=%~dp0"
+set "NODE_VERSION=20.18.0"
+set "NODE_ARCH=win-x64"
+set "PORTABLE_NODE_DIR=node-portable"
+set "NODE_ZIP=node-v%NODE_VERSION%-%NODE_ARCH%.zip"
+set "NODE_URL=https://nodejs.org/dist/v%NODE_VERSION%/%NODE_ZIP%"
+
+pushd "%SCRIPT_DIR%" >nul 2>&1
+if %errorLevel% NEQ 0 (
+    echo.
+    echo   ✗ Failed to switch to script directory: %SCRIPT_DIR%
+    echo   Please extract all files to a local folder (e.g., Desktop) and try again.
+    pause
+    exit /b 1
+)
+set "PROJECT_ROOT=%CD%"
 
 rem DEBUG: Add immediate pause to catch early errors
 if "%DEBUG_PAUSE%"=="1" pause
