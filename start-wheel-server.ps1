@@ -133,11 +133,20 @@ if ($Check) { Write-Host "`n  All checks passed!`n" -ForegroundColor Cyan; Read-
 
 Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
 
-# Admin check
+# Admin check - give user choice to continue without admin
 if (-not $Test -and -not (Test-Admin)) {
-    Write-Host "`n  Requesting Administrator privileges..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -Command `"Set-Location '$ScriptDir'; & '$PSCommandPath'`""
-    exit 0
+    Write-Host ""
+    Write-Host "  WARNING: Not running as Administrator" -ForegroundColor Yellow
+    Write-Host "  Some features (hosts file, SSL cert) may not work." -ForegroundColor Yellow
+    Write-Host ""
+    $choice = Read-Host "  Continue anyway? [Y/n]"
+    if ($choice -eq "n" -or $choice -eq "N") {
+        Write-Host "  Please run your terminal as Administrator and try again." -ForegroundColor Cyan
+        Read-Host "  Press Enter to exit"
+        exit 0
+    }
+    Write-Host "  Continuing without admin..." -ForegroundColor Yellow
+    $script:SkipAdmin = $true
 }
 
 Write-Host "`n  ─────────────────────────────────────────────────────────" -ForegroundColor Cyan
@@ -169,11 +178,15 @@ if ($Test) {
 $hostsFile = "$env:SystemRoot\System32\drivers\etc\hosts"
 if (-not $Test) {
     $entry = "127.0.0.1 $hostname"
-    $content = Get-Content $hostsFile -ErrorAction SilentlyContinue
-    if ($content -notmatch [regex]::Escape($entry)) { 
-        Add-Content $hostsFile "`n$entry" -ErrorAction SilentlyContinue 
+    try {
+        $fileContent = Get-Content $hostsFile -ErrorAction Stop
+        if ($fileContent -notmatch [regex]::Escape($entry)) { 
+            Add-Content $hostsFile "`n$entry" -ErrorAction Stop
+        }
+        Write-Host "  [3/6] Hosts file updated" -ForegroundColor Green
+    } catch {
+        Write-Host "  [3/6] Hosts file skipped (need admin)" -ForegroundColor Yellow
     }
-    Write-Host "  [3/6] Hosts file updated" -ForegroundColor Green
 } else { 
     Write-Host "  [3/6] Skipped hosts" -ForegroundColor Green 
 }
@@ -196,8 +209,7 @@ http://$hostname {
 "@
     Set-Content "Caddyfile" $caddyContent
     Write-Host "  [4/6] Caddyfile generated" -ForegroundColor Green
-    & .\caddy.exe trust 2>&1 | Out-Null
-    Write-Host "  [5/6] Certificate trusted" -ForegroundColor Green
+    try { & .\caddy.exe trust 2>&1 | Out-Null; Write-Host "  [5/6] Certificate trusted" -ForegroundColor Green } catch { Write-Host "  [5/6] Cert trust skipped (need admin)" -ForegroundColor Yellow }
 } else { 
     Write-Host "  [4/6] Skipped Caddyfile" -ForegroundColor Green
     Write-Host "  [5/6] Skipped cert" -ForegroundColor Green 
@@ -287,4 +299,6 @@ try {
     
     Write-Host "  Done!" -ForegroundColor Green
 }
+
+
 
