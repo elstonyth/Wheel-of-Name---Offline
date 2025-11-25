@@ -255,10 +255,11 @@ $env:CUSTOM_HOST = $hostname
 
 # Start Node directly (not as job) so output is visible
 $caddyLog = Join-Path $LogDir "caddy.log"
+$caddyErr = Join-Path $LogDir "caddy-error.log"
 
 # Start Caddy in background
 if (-not $Test) {
-    Start-Process -FilePath ".\caddy.exe" -ArgumentList "run --config Caddyfile" -WindowStyle Hidden -RedirectStandardOutput $caddyLog -RedirectStandardError $caddyLog
+    Start-Process -FilePath ".\caddy.exe" -ArgumentList "run --config Caddyfile" -WindowStyle Hidden -RedirectStandardOutput $caddyLog -RedirectStandardError $caddyErr
 }
 
 # Wait a moment
