@@ -372,7 +372,17 @@ function getRemoteControlHTML(port) {
   <div class="toast" id="toast">✓ Winner Set!</div>
   
   <script>
-    const ws = new WebSocket('ws://${localIP}:${port}');
+    const getWsUrl = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let host = window.location.host;
+      if (!host) {
+        const hostname = window.location.hostname || '${localIP}';
+        const fallbackPort = window.location.port || ${port};
+        host = hostname + ':' + fallbackPort;
+      }
+      return protocol + '//' + host;
+    };
+    const ws = new WebSocket(getWsUrl());
     let entries = [];
     let selectedIndex = null;
     
