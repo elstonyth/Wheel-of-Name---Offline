@@ -7,6 +7,15 @@ rem ==============================================================
 rem Wheel of Names Offline - Launcher & Manager
 rem ==============================================================
 
+rem DEBUG: Add immediate pause to catch early errors
+if "%DEBUG_PAUSE%"=="1" pause
+
+rem DEBUG: Create debug log
+set "DEBUG_LOG=logs\debug-%date:~-4,4%%date:~-10,2%%date:~-7,2%-%time:~0,2%%time:~3,2%%time:~6,2%.log"
+set "DEBUG_LOG=%DEBUG_LOG: =0%"
+if not exist "logs" mkdir "logs"
+echo [%date% %time%] Script started >> "%DEBUG_LOG%"
+
 set "SCRIPT_PID="
 set "NODE_PID="
 set "CADDY_PID="
@@ -32,21 +41,41 @@ powershell -Command "%PS_CYAN% '  ╚══════════════�
 echo.
 
 rem 1. Check for Administrator Privileges and Auto-Elevate
+echo [%date% %time%] Checking admin privileges... >> "%DEBUG_LOG%"
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
+    echo [%date% %time%] Admin check failed, attempting elevation... >> "%DEBUG_LOG%"
     powershell -Command "%PS_YELLOW% '  ⏳ Requesting Administrator privileges...'"
     set "_ARGS=%*"
+    echo [%date% %time%] Arguments: %_ARGS% >> "%DEBUG_LOG%"
+    echo [%date% %time%] Script path: %~f0 >> "%DEBUG_LOG%"
     powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%_ARGS%' -Verb RunAs"
+    echo [%date% %time%] Elevation command executed, exiting... >> "%DEBUG_LOG%"
     exit /b
 )
+echo [%date% %time%] Running as administrator >> "%DEBUG_LOG%"
 
 cd /d "%~dp0"
+echo [%date% %time%] Changed directory to: %CD% >> "%DEBUG_LOG%"
+if %errorLevel% NEQ 0 (
+    echo [%date% %time%] ERROR: Failed to change directory >> "%DEBUG_LOG%"
+    powershell -Command "%PS_RED% '  ✗ Failed to change to script directory'"
+    pause
+    exit /b 1
+)
 powershell -Command "%PS_GREEN% '  ✓ Running as Administrator'"
 
 rem Get current script PID for Guardian
+echo [%date% %time%] Getting script PID... >> "%DEBUG_LOG%"
+set "SCRIPT_PID="
 for /f "tokens=2" %%a in ('tasklist /fi "imagename eq cmd.exe" /v ^| findstr /i "%~nx0"') do (
     set "SCRIPT_PID=%%a"
 )
+if "%SCRIPT_PID%"=="" (
+    echo [%date% %time%] WARNING: Could not determine script PID >> "%DEBUG_LOG%"
+    set "SCRIPT_PID=0"
+)
+echo [%date% %time%] Script PID: %SCRIPT_PID% >> "%DEBUG_LOG%"
 
 rem Get local IP for remote control
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /C:"IPv4"') do (
@@ -63,22 +92,29 @@ powershell -Command "%PS_CYAN% '  ───────────────�
 echo.
 
 rem 2. Cleanup Existing Processes
+echo [%date% %time%] Cleaning up old processes... >> "%DEBUG_LOG%"
 powershell -Command "Write-Host '  [1/8] ' -NoNewline; %PS_YELLOW% 'Cleaning up old processes...' -NoNewline"
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM caddy.exe >nul 2>&1
+echo [%date% %time%] Process cleanup completed >> "%DEBUG_LOG%"
 powershell -Command "%PS_GREEN% ' Done'"
 
 rem 3. Check Dependencies
+echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
 if not exist "node_modules" (
+    echo [%date% %time%] Installing dependencies... >> "%DEBUG_LOG%"
     powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_YELLOW% 'Installing dependencies...'"
     call npm install
     if !errorLevel! NEQ 0 (
+        echo [%date% %time%] npm install failed with error !errorLevel! >> "%DEBUG_LOG%"
         powershell -Command "%PS_RED% '  ✗ npm install failed. Check Node.js installation.'"
         pause
         exit /b 1
     )
+    echo [%date% %time%] Dependencies installed successfully >> "%DEBUG_LOG%"
     powershell -Command "%PS_GREEN% '        ✓ Dependencies installed'"
 ) else (
+    echo [%date% %time%] Dependencies already exist >> "%DEBUG_LOG%"
     powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_GREEN% 'Dependencies OK'"
 )
 
@@ -297,6 +333,7 @@ echo.
 if "%TEST_MODE%"=="0" (
     timeout /t 2 >nul
 )
+echo [%date% %time%] Script completed successfully >> "%DEBUG_LOG%"
 exit /b 0
 
 rem ============================================================
