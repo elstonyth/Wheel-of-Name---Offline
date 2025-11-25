@@ -215,11 +215,12 @@ $caddyLog = Join-Path $LogDir "caddy.log"
 
 # Start Node (redirect to log but also capture output)
 $nodeJob = Start-Job -ScriptBlock {
-    param($port, $dir)
+    param($port, $dir, $customHost)
     Set-Location $dir
     $env:PORT = $port
+    $env:CUSTOM_HOST = $customHost
     & node clone.js serve 2>&1
-} -ArgumentList $port, $ScriptDir
+} -ArgumentList $port, $ScriptDir, $hostname
 
 # Start Caddy
 if (-not $Test) {
