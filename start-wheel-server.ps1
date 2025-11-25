@@ -150,11 +150,19 @@ Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
 Stop-Process -Name "caddy" -Force -ErrorAction SilentlyContinue
 Write-Host "  [1/6] Cleaned up" -ForegroundColor Green
 
-if ($Test) { $hostname = "localhost"; Write-Host "  [2/6] Using: localhost" -ForegroundColor Green }
-else {
-    $hostname = Read-Host "  Enter domain [wheel.local]"
+if ($Test) { 
+    $hostname = "localhost"
+    Write-Host "  [2/6] Using: localhost (test mode)" -ForegroundColor Green 
+} else {
+    Write-Host ""
+    Write-Host "  ----------------------------------------" -ForegroundColor Cyan
+    Write-Host "    CUSTOM DOMAIN SETUP" -ForegroundColor Cyan
+    Write-Host "  ----------------------------------------" -ForegroundColor Cyan
+    Write-Host ""
+    $hostname = Read-Host "    Enter domain name [wheel.local]"
     if ([string]::IsNullOrWhiteSpace($hostname)) { $hostname = "wheel.local" }
-    Write-Host "  [2/6] Using: $hostname" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  [2/6] Using hostname: $hostname" -ForegroundColor Green
 }
 
 $hostsFile = "$env:SystemRoot\System32\drivers\etc\hosts"
@@ -202,3 +210,4 @@ Stop-Process -Name "caddy" -Force -ErrorAction SilentlyContinue
 $content = Get-Content $hostsFile -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch [regex]::Escape("127.0.0.1 $hostname") }
 Set-Content $hostsFile $content -ErrorAction SilentlyContinue
 Write-Host "  Done!`n" -ForegroundColor Green
+
