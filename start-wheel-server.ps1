@@ -133,11 +133,33 @@ if ($Check) { Write-Host "`n  All checks passed!`n" -ForegroundColor Cyan; Read-
 
 Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
 
-# Admin check - auto-elevate in Windows Terminal
+# Admin check - prompt user to run as admin or continue without
 if (-not $Test -and -not (Test-Admin)) {
-    Write-Host "`n  Elevating to Administrator in Windows Terminal..." -ForegroundColor Yellow
-    Start-Process wt.exe -Verb RunAs -ArgumentList "powershell -NoExit -ExecutionPolicy Bypass -Command `"Set-Location '$ScriptDir'; & '$PSCommandPath'`""
-    exit 0
+    Write-Host ""
+    Write-Host "  ╔══════════════════════════════════════════════════════╗" -ForegroundColor Yellow
+    Write-Host "  ║  ⚠ ADMINISTRATOR REQUIRED                            ║" -ForegroundColor Yellow
+    Write-Host "  ╚══════════════════════════════════════════════════════╝" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  For full features (hosts file, SSL, DNS), run as Admin." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Options:" -ForegroundColor Cyan
+    Write-Host "    [Y] Continue without admin (limited features)"
+    Write-Host "    [N] Exit and restart as Administrator"
+    Write-Host ""
+    $choice = Read-Host "  Continue without admin? [y/N]"
+    if ($choice -match "^[Yy]") {
+        Write-Host "  Continuing with limited features..." -ForegroundColor Yellow
+        $script:SkipAdminFeatures = $true
+    } else {
+        Write-Host ""
+        Write-Host "  HOW TO RUN AS ADMINISTRATOR:" -ForegroundColor Cyan
+        Write-Host "  1. Right-click on Windows Terminal / PowerShell"
+        Write-Host "  2. Select 'Run as administrator'"
+        Write-Host "  3. Navigate to this folder and run the script again"
+        Write-Host ""
+        Read-Host "  Press Enter to exit"
+        exit 0
+    }
 }
 
 Write-Host "`n  ─────────────────────────────────────────────────────────" -ForegroundColor Cyan
