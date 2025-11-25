@@ -15,6 +15,7 @@ $CaddyUrl = "https://github.com/caddyserver/caddy/releases/download/v$CaddyVersi
 $ScriptDir = $PSScriptRoot
 $LogDir = Join-Path $ScriptDir "logs"
 $UsePortableNode = $false
+$SkipAdminFeatures = $false
 
 Set-Location $ScriptDir
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
@@ -45,7 +46,7 @@ function Get-LocalIP {
 }
 
 function Install-PortableNodeJS {
-    Write-Host "    Downloading Node.js v$NodeVersion (~30MB)..." -ForegroundColor Yellow
+    Write-Host "    Downloading Node.js v$NodeVersion..." -ForegroundColor Yellow
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip -UseBasicParsing
     Write-Host "    Extracting..." -ForegroundColor Yellow
@@ -56,7 +57,7 @@ function Install-PortableNodeJS {
 }
 
 function Install-Caddy {
-    Write-Host "    Downloading Caddy v$CaddyVersion (~45MB)..." -ForegroundColor Yellow
+    Write-Host "    Downloading Caddy v$CaddyVersion..." -ForegroundColor Yellow
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $CaddyUrl -OutFile $CaddyZip -UseBasicParsing
     Write-Host "    Extracting..." -ForegroundColor Yellow
@@ -66,23 +67,30 @@ function Install-Caddy {
 
 # Help Mode
 if ($Help) {
-    Write-Host "`n  WHEEL OF NAMES - HELP`n" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  WHEEL OF NAMES - HELP" -ForegroundColor Cyan
+    Write-Host ""
     Write-Host "  USAGE:" -ForegroundColor Yellow
-    Write-Host "   .\start-wheel-server.ps1           [Start server]"
-    Write-Host "   .\start-wheel-server.ps1 -Check    [Diagnostic checks]"
-    Write-Host "   .\start-wheel-server.ps1 -Help     [This help]`n"
+    Write-Host "   .\start-wheel-server.ps1           Start server"
+    Write-Host "   .\start-wheel-server.ps1 -Check    Diagnostic checks"
+    Write-Host "   .\start-wheel-server.ps1 -Help     This help"
+    Write-Host ""
     Write-Host "  NEW PC? JUST RUN THE SCRIPT!" -ForegroundColor Green
     Write-Host "   Auto-downloads: Node.js, Caddy, npm dependencies"
-    Write-Host "   Only prompt: Custom domain (default: wheel.local)`n"
+    Write-Host "   Only prompt: Custom domain (default: wheel.local)"
+    Write-Host ""
     exit 0
 }
 
 # Banner
 Clear-Host
-Write-Host "`n  ======================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  ========================================================" -ForegroundColor Cyan
 Write-Host "         WHEEL OF NAMES - OFFLINE SERVER" -ForegroundColor Cyan
-Write-Host "  ======================================================`n" -ForegroundColor Cyan
-Write-Host "  PRE-FLIGHT SYSTEM CHECKS`n" -ForegroundColor Cyan
+Write-Host "  ========================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  PRE-FLIGHT SYSTEM CHECKS" -ForegroundColor Cyan
+Write-Host ""
 
 # [1/7] Node.js
 Write-Host "  [1/7] " -NoNewline; Write-Host "Checking Node.js..." -ForegroundColor Yellow -NoNewline
@@ -129,42 +137,43 @@ $port = Find-AvailablePort
 if ($port -gt 0) { Write-Host " Port $port available" -ForegroundColor Green } 
 else { Write-Host " ALL IN USE" -ForegroundColor Red; Read-Host "Press Enter"; exit 1 }
 
-if ($Check) { Write-Host "`n  All checks passed!`n" -ForegroundColor Cyan; Read-Host "Press Enter"; exit 0 }
+if ($Check) { Write-Host ""; Write-Host "  All checks passed!" -ForegroundColor Green; Write-Host ""; Read-Host "Press Enter"; exit 0 }
 
-Write-Host "`n  All pre-flight checks passed!" -ForegroundColor Green
+Write-Host ""
+Write-Host "  All pre-flight checks passed!" -ForegroundColor Green
 
-# Admin check - prompt user to run as admin or continue without
+# Admin check
 if (-not $Test -and -not (Test-Admin)) {
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════════════════════╗" -ForegroundColor Yellow
-    Write-Host "  ║  ⚠ ADMINISTRATOR REQUIRED                            ║" -ForegroundColor Yellow
-    Write-Host "  ╚══════════════════════════════════════════════════════╝" -ForegroundColor Yellow
+    Write-Host "  --------------------------------------------------------" -ForegroundColor Yellow
+    Write-Host "  WARNING: Not running as Administrator" -ForegroundColor Yellow
+    Write-Host "  Some features (hosts file, SSL, DNS) need admin rights." -ForegroundColor Yellow
+    Write-Host "  --------------------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  For full features (hosts file, SSL, DNS), run as Admin." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  Options:" -ForegroundColor Cyan
-    Write-Host "    [Y] Continue without admin (limited features)"
-    Write-Host "    [N] Exit and restart as Administrator"
+    Write-Host "  [Y] Continue anyway (limited features)" -ForegroundColor Cyan
+    Write-Host "  [N] Exit and restart as Administrator" -ForegroundColor Cyan
     Write-Host ""
     $choice = Read-Host "  Continue without admin? [y/N]"
     if ($choice -match "^[Yy]") {
         Write-Host "  Continuing with limited features..." -ForegroundColor Yellow
-        $script:SkipAdminFeatures = $true
+        $SkipAdminFeatures = $true
     } else {
         Write-Host ""
-        Write-Host "  HOW TO RUN AS ADMINISTRATOR:" -ForegroundColor Cyan
-        Write-Host "  1. Right-click on Windows Terminal / PowerShell"
-        Write-Host "  2. Select 'Run as administrator'"
-        Write-Host "  3. Navigate to this folder and run the script again"
+        Write-Host "  To run as Administrator:" -ForegroundColor Cyan
+        Write-Host "  1. Right-click PowerShell/Terminal" -ForegroundColor White
+        Write-Host "  2. Select 'Run as administrator'" -ForegroundColor White
+        Write-Host "  3. Run this script again" -ForegroundColor White
         Write-Host ""
         Read-Host "  Press Enter to exit"
         exit 0
     }
 }
 
-Write-Host "`n  ─────────────────────────────────────────────────────────" -ForegroundColor Cyan
-Write-Host "   SETUP" -ForegroundColor Cyan
-Write-Host "  ─────────────────────────────────────────────────────────`n" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  --------------------------------------------------------" -ForegroundColor Cyan
+Write-Host "  SETUP" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------------------" -ForegroundColor Cyan
+Write-Host ""
 
 # Cleanup
 Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
@@ -177,9 +186,7 @@ if ($Test) {
     Write-Host "  [2/6] Using: localhost (test mode)" -ForegroundColor Green 
 } else {
     Write-Host ""
-    Write-Host "  ┌──────────────────────────────────────────────────────┐" -ForegroundColor Cyan
-    Write-Host "  │  CUSTOM DOMAIN SETUP                                 │" -ForegroundColor Cyan
-    Write-Host "  └──────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host "  --- CUSTOM DOMAIN SETUP ---" -ForegroundColor Cyan
     Write-Host ""
     $hostname = Read-Host "    Enter domain name [wheel.local]"
     if ([string]::IsNullOrWhiteSpace($hostname)) { $hostname = "wheel.local" }
@@ -189,7 +196,7 @@ if ($Test) {
 
 # Hosts file
 $hostsFile = "$env:SystemRoot\System32\drivers\etc\hosts"
-if (-not $Test) {
+if (-not $Test -and -not $SkipAdminFeatures) {
     $entry = "127.0.0.1 $hostname"
     try {
         $fileContent = Get-Content $hostsFile -ErrorAction Stop
@@ -200,8 +207,10 @@ if (-not $Test) {
     } catch {
         Write-Host "  [3/6] Hosts file skipped (need admin)" -ForegroundColor Yellow
     }
+} elseif ($SkipAdminFeatures) {
+    Write-Host "  [3/6] Hosts file skipped (no admin)" -ForegroundColor Yellow
 } else { 
-    Write-Host "  [3/6] Skipped hosts" -ForegroundColor Green 
+    Write-Host "  [3/6] Skipped hosts (test mode)" -ForegroundColor Green 
 }
 
 # Caddyfile
@@ -222,98 +231,78 @@ http://$hostname {
 "@
     Set-Content "Caddyfile" $caddyContent
     Write-Host "  [4/6] Caddyfile generated" -ForegroundColor Green
-    try { & .\caddy.exe trust 2>&1 | Out-Null; Write-Host "  [5/6] Certificate trusted" -ForegroundColor Green } catch { Write-Host "  [5/6] Cert trust skipped (need admin)" -ForegroundColor Yellow }
+    
+    if (-not $SkipAdminFeatures) {
+        try { 
+            & .\caddy.exe trust 2>&1 | Out-Null
+            Write-Host "  [5/6] Certificate trusted" -ForegroundColor Green 
+        } catch { 
+            Write-Host "  [5/6] Cert trust skipped" -ForegroundColor Yellow 
+        }
+    } else {
+        Write-Host "  [5/6] Cert trust skipped (no admin)" -ForegroundColor Yellow
+    }
 } else { 
-    Write-Host "  [4/6] Skipped Caddyfile" -ForegroundColor Green
-    Write-Host "  [5/6] Skipped cert" -ForegroundColor Green 
+    Write-Host "  [4/6] Skipped Caddyfile (test mode)" -ForegroundColor Green
+    Write-Host "  [5/6] Skipped cert (test mode)" -ForegroundColor Green 
 }
 
 # Start servers
 Write-Host "  [6/6] Starting servers..." -ForegroundColor Yellow
 
 $env:PORT = $port
-$nodeLog = Join-Path $LogDir "node_server.log"
+$env:CUSTOM_HOST = $hostname
+
+# Start Node directly (not as job) so output is visible
 $caddyLog = Join-Path $LogDir "caddy.log"
 
-# Start Node (redirect to log but also capture output)
-$nodeJob = Start-Job -ScriptBlock {
-    param($port, $dir, $customHost)
-    Set-Location $dir
-    $env:PORT = $port
-    $env:CUSTOM_HOST = $customHost
-    & node clone.js serve 2>&1
-} -ArgumentList $port, $ScriptDir, $hostname
-
-# Start Caddy
+# Start Caddy in background
 if (-not $Test) {
-    Start-Process -FilePath ".\caddy.exe" -ArgumentList "run --config Caddyfile" -WindowStyle Hidden -RedirectStandardOutput $caddyLog
+    Start-Process -FilePath ".\caddy.exe" -ArgumentList "run --config Caddyfile" -WindowStyle Hidden -RedirectStandardOutput $caddyLog -RedirectStandardError $caddyLog
 }
 
-# Wait for server
-Start-Sleep 3
-if (Wait-ForPort $port 30) {
-    Write-Host "  Server started!" -ForegroundColor Green
-} else {
-    Write-Host "  Server failed to start!" -ForegroundColor Red
-    Receive-Job $nodeJob
-    Read-Host "Press Enter"
-    exit 1
-}
+# Wait a moment
+Start-Sleep 2
 
 # Get local IP
 $localIP = Get-LocalIP
-
-# Show server output (includes QR code)
-Write-Host "`n  ======================================================" -ForegroundColor Cyan
-Write-Host "   SERVER OUTPUT (includes QR code)" -ForegroundColor Cyan  
-Write-Host "  ======================================================`n" -ForegroundColor Cyan
-
-# Display node output (which contains the QR code)
-$output = Receive-Job $nodeJob -Keep 2>$null
-if ($output) {
-    $output | ForEach-Object { Write-Host $_ }
-}
 
 # Open browser
 if (-not $Test) {
     Start-Process "https://$hostname"
 }
 
-# Server status
-Write-Host "`n  ======================================================" -ForegroundColor Cyan
-Write-Host "   SERVER IS RUNNING" -ForegroundColor Green
-Write-Host "  ======================================================`n" -ForegroundColor Cyan
-Write-Host "  Main URL:    https://$hostname" -ForegroundColor Green
+Write-Host ""
+Write-Host "  ========================================================" -ForegroundColor Green
+Write-Host "  SERVER STARTING..." -ForegroundColor Green
+Write-Host "  ========================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Main URL:    https://$hostname" -ForegroundColor Cyan
 Write-Host "  Remote URL:  http://${localIP}:$port/remote" -ForegroundColor Yellow
 Write-Host "  Port:        $port" -ForegroundColor White
-Write-Host "`n  Press Ctrl+C or close this window to stop" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  Press Ctrl+C to stop the server" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  --------------------------------------------------------" -ForegroundColor Cyan
+Write-Host "  SERVER OUTPUT:" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
-# Keep running and show output
+# Run Node in foreground so user sees output including QR code
 try {
-    while ($true) {
-        $newOutput = Receive-Job $nodeJob 2>$null
-        if ($newOutput) {
-            $newOutput | ForEach-Object { Write-Host $_ }
-        }
-        Start-Sleep 1
-    }
+    & node clone.js serve
 } finally {
-    Write-Host "`n  Shutting down..." -ForegroundColor Yellow
-    Stop-Job $nodeJob -ErrorAction SilentlyContinue
-    Remove-Job $nodeJob -Force -ErrorAction SilentlyContinue
-    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
+    Write-Host ""
+    Write-Host "  Shutting down..." -ForegroundColor Yellow
     Stop-Process -Name "caddy" -Force -ErrorAction SilentlyContinue
     
     # Cleanup hosts file
-    if (-not $Test -and $hostname -ne "localhost") {
-        $content = Get-Content $hostsFile -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch [regex]::Escape("127.0.0.1 $hostname") }
-        Set-Content $hostsFile $content -ErrorAction SilentlyContinue
+    if (-not $Test -and -not $SkipAdminFeatures -and $hostname -ne "localhost") {
+        try {
+            $content = Get-Content $hostsFile -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch [regex]::Escape("127.0.0.1 $hostname") }
+            Set-Content $hostsFile $content -ErrorAction SilentlyContinue
+        } catch { }
     }
     
     Write-Host "  Done!" -ForegroundColor Green
 }
-
-
-
-
