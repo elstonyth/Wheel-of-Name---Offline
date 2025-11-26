@@ -15,6 +15,33 @@ Run [Wheel of Names](https://wheelofnames.com) completely offline with network-w
 
 ---
 
+## � Installation
+
+### Option 1: Download ZIP (Easiest)
+1. Click the green **Code** button above → **Download ZIP**
+2. Extract to any folder (e.g., `C:\WheelOfNames\`)
+3. Double-click `start-wheel-server.bat`
+
+### Option 2: Git Clone
+```cmd
+git clone https://github.com/elstonyth/Wheel-of-Name---Offline.git
+cd Wheel-of-Name---Offline
+start-wheel-server.bat
+```
+
+### First Run (Automatic Setup)
+On first launch, the script will automatically:
+1. ✅ Download portable Node.js (~30MB)
+2. ✅ Download Caddy server (~40MB)
+3. ✅ Install npm dependencies
+4. ✅ Configure firewall rules (requires Admin)
+5. ✅ Start all services
+6. ✅ Open browser to the wheel
+
+> 💡 **No manual installation needed!** Everything is handled automatically.
+
+---
+
 ## 🚀 Quick Start
 
 ### Windows
@@ -22,12 +49,7 @@ Run [Wheel of Names](https://wheelofnames.com) completely offline with network-w
 start-wheel-server.bat
 ```
 
-That's it! The script will:
-1. Download Node.js (if not installed)
-2. Download Caddy (if not installed)
-3. Install dependencies
-4. Start the server
-5. Open your browser
+That's it! The script handles everything automatically.
 
 ---
 
