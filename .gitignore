@@ -1,8 +1,23 @@
+# AI/IDE
 .gemini/
-gha-creds-*.json
-logs/
-verify_fix.js
-node_modules/
+.codeiumignore
 
+# Credentials
+gha-creds-*.json
+
+# Generated at runtime
+logs/
+node_modules/
 node-portable/
 *.zip
+
+# Downloaded binaries (auto-downloaded by script)
+caddy.exe
+
+# Generated config files
+Caddyfile
+config.json
+
+# Temp/debug files
+verify_fix.js
+progress.md

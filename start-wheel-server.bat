@@ -45,8 +45,166 @@ set "PS_CYAN=Write-Host -ForegroundColor Cyan"
 if /I "%REQUEST%"=="--help" goto HELP_MODE
 if /I "%REQUEST%"=="--check" goto DIAGNOSTIC_MODE
 if /I "%REQUEST%"=="--diagnose" goto DIAGNOSTIC_MODE
+if /I "%REQUEST%"=="--quick" goto QUICK_MODE
+if /I "%REQUEST%"=="quick" goto QUICK_MODE
+if /I "%REQUEST%"=="--dns" goto DNS_MODE
+if /I "%REQUEST%"=="dns" goto DNS_MODE
+if /I "%REQUEST%"=="--tray" goto TRAY_MODE
+if /I "%REQUEST%"=="tray" goto TRAY_MODE
+if /I "%REQUEST%"=="--silent" goto SILENT_MODE
+if /I "%REQUEST%"=="silent" goto SILENT_MODE
+if /I "%REQUEST%"=="--update" goto UPDATE_CHECK_MODE
+if /I "%REQUEST%"=="update" goto UPDATE_CHECK_MODE
+if /I "%REQUEST%"=="--network" goto NETWORK_DIAG_MODE
+if /I "%REQUEST%"=="network" goto NETWORK_DIAG_MODE
+
+rem Load saved config if exists
+set "CONFIG_FILE=%~dp0config.json"
+set "SAVED_HOSTNAME="
+set "SAVED_PORT="
+set "QUICK_MODE=0"
+if exist "%CONFIG_FILE%" (
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"hostname" "%CONFIG_FILE%"') do (
+        set "SAVED_HOSTNAME=%%~a"
+        set "SAVED_HOSTNAME=!SAVED_HOSTNAME: =!"
+        set "SAVED_HOSTNAME=!SAVED_HOSTNAME:"=!"
+    )
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"preferredPort" "%CONFIG_FILE%"') do (
+        set "SAVED_PORT=%%~a"
+        set "SAVED_PORT=!SAVED_PORT: =!"
+    )
+)
+goto CONTINUE_NORMAL
+
+:QUICK_MODE
+set "QUICK_MODE=1"
+echo [%date% %time%] Quick mode enabled >> "%DEBUG_LOG%"
+goto CONTINUE_NORMAL
+
+:DNS_MODE
+echo.
+powershell -Command "Write-Host '  🌐 Starting DNS Server...' -ForegroundColor Cyan"
+echo.
+rem Ensure Node.js is available
+call :ENSURE_NODE
+if !errorLevel! NEQ 0 exit /b 1
+
+set "SERVER_IP="
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /C:"IPv4"') do (
+    for /f "tokens=1" %%b in ("%%a") do (
+        if "!SERVER_IP!"=="" set "SERVER_IP=%%b"
+    )
+)
+set "CUSTOM_HOST=wheel.local"
+if exist "%CONFIG_FILE%" (
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"hostname" "%CONFIG_FILE%"') do (
+        set "CUSTOM_HOST=%%~a"
+        set "CUSTOM_HOST=!CUSTOM_HOST: =!"
+        set "CUSTOM_HOST=!CUSTOM_HOST:"=!"
+    )
+)
+set "DNS_PORT=53"
+set "SERVER_IP=%SERVER_IP%"
+node scripts\dns-server.js
+exit /b
+
+:TRAY_MODE
+echo.
+powershell -Command "Write-Host '  🔲 Starting in System Tray Mode...' -ForegroundColor Cyan"
+echo.
+rem Ensure Node.js is available
+call :ENSURE_NODE
+if !errorLevel! NEQ 0 exit /b 1
+
+rem Load hostname from config
+set "TRAY_HOSTNAME=wheel.local"
+set "TRAY_PORT=8080"
+if exist "%CONFIG_FILE%" (
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"hostname" "%CONFIG_FILE%"') do (
+        set "TRAY_HOSTNAME=%%~a"
+        set "TRAY_HOSTNAME=!TRAY_HOSTNAME: =!"
+        set "TRAY_HOSTNAME=!TRAY_HOSTNAME:"=!"
+    )
+)
+powershell -ExecutionPolicy Bypass -File "scripts\tray-server.ps1" -Hostname "!TRAY_HOSTNAME!" -Port !TRAY_PORT! -ScriptDir "%~dp0scripts"
+exit /b
+
+:SILENT_MODE
+echo [%date% %time%] Silent mode starting >> "%DEBUG_LOG%"
+rem Ensure Node.js is available
+call :ENSURE_NODE
+if !errorLevel! NEQ 0 exit /b 1
+
+rem Load hostname from config
+set "SILENT_HOSTNAME=wheel.local"
+set "SILENT_PORT=8080"
+if exist "%CONFIG_FILE%" (
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"hostname" "%CONFIG_FILE%"') do (
+        set "SILENT_HOSTNAME=%%~a"
+        set "SILENT_HOSTNAME=!SILENT_HOSTNAME: =!"
+        set "SILENT_HOSTNAME=!SILENT_HOSTNAME:"=!"
+    )
+)
+rem Start watchdog in background (handles auto-recovery)
+start /B powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "scripts\watchdog.ps1" -Hostname "!SILENT_HOSTNAME!" -Port !SILENT_PORT! -ProjectDir "%~dp0"
+echo Server started in silent mode with auto-recovery.
+echo Logs: logs\watchdog.log
+exit /b
+
+:UPDATE_CHECK_MODE
+echo.
+rem Ensure Node.js is available
+call :ENSURE_NODE
+if !errorLevel! NEQ 0 exit /b 1
+
+node scripts\update-check.js
+echo.
+pause
+exit /b
+
+:NETWORK_DIAG_MODE
+echo.
+rem Ensure Node.js is available
+call :ENSURE_NODE
+if !errorLevel! NEQ 0 exit /b 1
+
+set "DIAG_HOSTNAME=wheel.local"
+set "DIAG_PORT=8080"
+if exist "%CONFIG_FILE%" (
+    for /f "tokens=2 delims=:," %%a in ('findstr /C:"hostname" "%CONFIG_FILE%"') do (
+        set "DIAG_HOSTNAME=%%~a"
+        set "DIAG_HOSTNAME=!DIAG_HOSTNAME: =!"
+        set "DIAG_HOSTNAME=!DIAG_HOSTNAME:"=!"
+    )
+)
+node scripts\network-diagnostics.js --hostname=!DIAG_HOSTNAME! --port=!DIAG_PORT!
+echo.
+pause
+exit /b
+
+:CONTINUE_NORMAL
 
 rem ==============================================================
+rem REQUEST ADMIN FIRST (to avoid window jump later)
+rem ==============================================================
+
+rem Skip elevation in test mode for automated testing
+if "%TEST_MODE%"=="1" goto SKIP_EARLY_ELEVATION
+
+net session >nul 2>&1
+if %errorLevel% NEQ 0 (
+    echo.
+    powershell -Command "Write-Host '  🔐 ' -NoNewline; Write-Host 'Requesting Administrator privileges...' -ForegroundColor Yellow"
+    echo.
+    if "%~1"=="" (
+        powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    ) else (
+        powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+    )
+    exit /b
+)
+
+:SKIP_EARLY_ELEVATION
 
 rem ==============================================================
 rem PRE-FLIGHT CHECKS
@@ -271,42 +429,13 @@ powershell -Command "%PS_CYAN% '  ║                                           
 powershell -Command "%PS_CYAN% '  ╚══════════════════════════════════════════════════════╝'"
 echo.
 
-rem 1. Check for Administrator Privileges and Auto-Elevate
-rem Skip elevation in test mode for automated testing
-if "%TEST_MODE%"=="1" (
-    echo [%date% %time%] Test mode detected, skipping admin elevation >> "%DEBUG_LOG%"
-    powershell -Command "%PS_YELLOW% '  ⚠ Test Mode: Running without admin privileges'"
-    goto SKIP_ELEVATION
-)
-
-echo [%date% %time%] Checking admin privileges... >> "%DEBUG_LOG%"
-net session >nul 2>&1
-if %errorLevel% NEQ 0 (
-    echo [%date% %time%] Admin check failed, attempting elevation... >> "%DEBUG_LOG%"
-    powershell -Command "%PS_YELLOW% '  ⏳ Requesting Administrator privileges...'"
-    echo [%date% %time%] Arguments: %* >> "%DEBUG_LOG%"
-    echo [%date% %time%] Script path: %~f0 >> "%DEBUG_LOG%"
-    if "%~1"=="" (
-        powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-    ) else (
-        powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
-    )
-    echo [%date% %time%] Elevation command executed, exiting... >> "%DEBUG_LOG%"
-    exit /b
-)
-echo [%date% %time%] Running as administrator >> "%DEBUG_LOG%"
-
-:SKIP_ELEVATION
-
+rem 1. Verify Administrator (already elevated at start)
 cd /d "%~dp0"
-echo [%date% %time%] Changed directory to: %CD% >> "%DEBUG_LOG%"
-if %errorLevel% NEQ 0 (
-    echo [%date% %time%] ERROR: Failed to change directory >> "%DEBUG_LOG%"
-    powershell -Command "%PS_RED% '  ✗ Failed to change to script directory'"
-    pause
-    exit /b 1
+if "%TEST_MODE%"=="1" (
+    powershell -Command "%PS_YELLOW% '  ⚠ Test Mode: Running without admin privileges'"
+) else (
+    powershell -Command "%PS_GREEN% '  ✓ Running as Administrator'"
 )
-powershell -Command "%PS_GREEN% '  ✓ Running as Administrator'"
 
 rem Get current script PID for Guardian
 echo [%date% %time%] Getting script PID... >> "%DEBUG_LOG%"
@@ -336,7 +465,7 @@ echo.
 
 rem 2. Cleanup Existing Processes
 echo [%date% %time%] Cleaning up old processes... >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [1/8] ' -NoNewline; %PS_YELLOW% 'Cleaning up old processes...' -NoNewline"
+powershell -Command "Write-Host '  [1/9] ' -NoNewline; %PS_YELLOW% 'Cleaning up old processes...' -NoNewline"
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM caddy.exe >nul 2>&1
 echo [%date% %time%] Process cleanup completed >> "%DEBUG_LOG%"
@@ -346,7 +475,7 @@ rem 3. Check Dependencies
 echo [%date% %time%] Checking dependencies... >> "%DEBUG_LOG%"
 if not exist "node_modules" (
     echo [%date% %time%] Installing dependencies... >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_YELLOW% 'Installing dependencies...'"
+    powershell -Command "Write-Host '  [2/9] ' -NoNewline; %PS_YELLOW% 'Installing dependencies...'"
     call npm install
     if !errorLevel! NEQ 0 (
         echo [%date% %time%] npm install failed with error !errorLevel! >> "%DEBUG_LOG%"
@@ -358,15 +487,27 @@ if not exist "node_modules" (
     powershell -Command "%PS_GREEN% '        ✓ Dependencies installed'"
 ) else (
     echo [%date% %time%] Dependencies already exist >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [2/8] ' -NoNewline; %PS_GREEN% 'Dependencies OK'"
+    powershell -Command "Write-Host '  [2/9] ' -NoNewline; %PS_GREEN% 'Dependencies OK'"
 )
 
 rem 4. Set Hostname (skip prompt in test mode)
 if "%TEST_MODE%"=="1" (
     set "HOSTNAME=localhost"
+    set "EXTRA_HOSTNAMES="
     echo [%date% %time%] Test mode: using localhost >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: localhost (test mode)'"
+    powershell -Command "Write-Host '  [3/9] ' -NoNewline; %PS_GREEN% 'Using hostname: localhost (test mode)'"
     goto SKIP_HOSTS_SETUP
+)
+
+rem Handle quick mode - use saved config without prompts
+if "%QUICK_MODE%"=="1" (
+    if not "!SAVED_HOSTNAME!"=="" (
+        set "HOSTNAME=!SAVED_HOSTNAME!"
+        set "EXTRA_HOSTNAMES="
+        echo [%date% %time%] Quick mode: using saved hostname !HOSTNAME! >> "%DEBUG_LOG%"
+        powershell -Command "Write-Host '  [3/9] ' -NoNewline; %PS_GREEN% 'Using saved hostname: !HOSTNAME! (quick mode)'"
+        goto SKIP_HOSTNAME_PROMPT
+    )
 )
 
 echo.
@@ -375,27 +516,100 @@ powershell -Command "%PS_CYAN% '  │  CUSTOM DOMAIN SETUP                      
 powershell -Command "%PS_CYAN% '  └──────────────────────────────────────────────────────┘'"
 echo.
 set "HOSTNAME=wheel.local"
-set /p "HOSTNAME=    Enter domain name [wheel.local]: "
-if "!HOSTNAME!"=="" set "HOSTNAME=wheel.local"
-echo.
-echo [%date% %time%] Using hostname: !HOSTNAME! >> "%DEBUG_LOG%"
-powershell -Command "Write-Host '  [3/8] ' -NoNewline; %PS_GREEN% 'Using hostname: !HOSTNAME!'"
+set "EXTRA_HOSTNAMES="
+if not "!SAVED_HOSTNAME!"=="" set "HOSTNAME=!SAVED_HOSTNAME!"
 
-rem 4. Update Hosts File (skip in test mode)
+powershell -Command "%PS_YELLOW% '    Enter primary domain name (or press Enter for default):'"
+set /p "HOSTNAME=    [!HOSTNAME!]: "
+if "!HOSTNAME!"=="" (
+    if not "!SAVED_HOSTNAME!"=="" (
+        set "HOSTNAME=!SAVED_HOSTNAME!"
+    ) else (
+        set "HOSTNAME=wheel.local"
+    )
+)
+
+echo.
+powershell -Command "%PS_YELLOW% '    Add extra domain aliases? (comma-separated, or press Enter to skip)'"
+powershell -Command "%PS_YELLOW% '    Example: spin.local, raffle.local'"
+set /p "EXTRA_HOSTNAMES=    Extra hostnames: "
+
+rem Build full hostname list for Caddy
+set "ALL_HOSTNAMES=!HOSTNAME!"
+if not "!EXTRA_HOSTNAMES!"=="" (
+    set "ALL_HOSTNAMES=!HOSTNAME!, !EXTRA_HOSTNAMES!"
+)
+
+echo.
+echo [%date% %time%] Using hostnames: !ALL_HOSTNAMES! >> "%DEBUG_LOG%"
+powershell -Command "Write-Host '  [3/9] ' -NoNewline; %PS_GREEN% 'Using hostnames: !HOSTNAME!'"
+if not "!EXTRA_HOSTNAMES!"=="" (
+    powershell -Command "%PS_GREEN% '                  + !EXTRA_HOSTNAMES!'"
+)
+
+rem Save config for quick mode (create if doesn't exist)
+if not exist "%CONFIG_FILE%" (
+    echo {"hostname":"!HOSTNAME!","hostnames":["!HOSTNAME!"],"preferredPort":8080,"enableDnsServer":false,"dnsPort":53,"autoOpenBrowser":true,"checkUpdatesOnStart":true,"lastUsed":null,"lastUpdateCheck":null} > "%CONFIG_FILE%"
+)
+powershell -Command "try { $c = Get-Content '%CONFIG_FILE%' -Raw | ConvertFrom-Json; $c.hostname = '!HOSTNAME!'; $c.hostnames = @('!HOSTNAME!'); $c.lastUsed = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); $c | ConvertTo-Json | Set-Content '%CONFIG_FILE%' } catch { }"
+
+:SKIP_HOSTNAME_PROMPT
+
+rem 4. Update Hosts File (skip in test mode) - Add all hostnames
 set "HOSTS_FILE=%SystemRoot%\System32\drivers\etc\hosts"
-powershell -Command "Write-Host '  [4/8] ' -NoNewline; %PS_YELLOW% 'Updating hosts file...' -NoNewline"
+powershell -Command "Write-Host '  [4/9] ' -NoNewline; %PS_YELLOW% 'Updating hosts file...' -NoNewline"
+set "HOSTS_UPDATED=0"
+
+rem Add primary hostname
 findstr /C:"127.0.0.1 !HOSTNAME!" "%HOSTS_FILE%" >nul 2>&1
 if !errorLevel! NEQ 0 (
     echo. >> "%HOSTS_FILE%"
     echo 127.0.0.1 !HOSTNAME! >> "%HOSTS_FILE%"
+    set "HOSTS_UPDATED=1"
+)
+
+rem Add extra hostnames if any
+if not "!EXTRA_HOSTNAMES!"=="" (
+    for %%h in (!EXTRA_HOSTNAMES!) do (
+        set "EXTRA_HOST=%%h"
+        set "EXTRA_HOST=!EXTRA_HOST: =!"
+        if not "!EXTRA_HOST!"=="" (
+            findstr /C:"127.0.0.1 !EXTRA_HOST!" "%HOSTS_FILE%" >nul 2>&1
+            if !errorLevel! NEQ 0 (
+                echo 127.0.0.1 !EXTRA_HOST! >> "%HOSTS_FILE%"
+                set "HOSTS_UPDATED=1"
+            )
+        )
+    )
+)
+
+if "!HOSTS_UPDATED!"=="1" (
     powershell -Command "%PS_GREEN% ' Added'"
+) else (
+    powershell -Command "%PS_GREEN% ' OK (exists)'"
+)
+
+rem 4.5 Configure Firewall Rules
+powershell -Command "Write-Host '  [5/9] ' -NoNewline; %PS_YELLOW% 'Configuring firewall...' -NoNewline"
+set "FW_RULE_NAME=Wheel of Names Server"
+netsh advfirewall firewall show rule name="%FW_RULE_NAME%" >nul 2>&1
+if !errorLevel! NEQ 0 (
+    rem Add firewall rules for HTTP, HTTPS, and Node port
+    netsh advfirewall firewall add rule name="%FW_RULE_NAME%" dir=in action=allow protocol=tcp localport=80,443,8080-8090 >nul 2>&1
+    if !errorLevel! EQU 0 (
+        powershell -Command "%PS_GREEN% ' Added'"
+        echo [%date% %time%] Firewall rules added >> "%DEBUG_LOG%"
+    ) else (
+        powershell -Command "%PS_YELLOW% ' Skipped (may need manual setup)'"
+        echo [%date% %time%] Firewall rule creation failed >> "%DEBUG_LOG%"
+    )
 ) else (
     powershell -Command "%PS_GREEN% ' OK (exists)'"
 )
 
 :SKIP_HOSTS_SETUP
 
-rem 5. Check if port 8080 is available
+rem 6. Check if port 8080 is available
 set "PORT=8080"
 :CHECK_PORT
 netstat -an | findstr /C:":%PORT% " | findstr "LISTENING" >nul 2>&1
@@ -408,26 +622,46 @@ if %errorLevel% EQU 0 (
     )
     goto CHECK_PORT
 )
-powershell -Command "Write-Host '  [5/8] ' -NoNewline; %PS_GREEN% 'Port %PORT% available'"
+powershell -Command "Write-Host '  [6/9] ' -NoNewline; %PS_GREEN% 'Port %PORT% available'"
 
-rem 6. Generate Dynamic Caddyfile with HTTPS support (skip in test mode)
+rem 7. Generate Dynamic Caddyfile with HTTPS support (skip in test mode)
 if "%TEST_MODE%"=="1" (
     echo [%date% %time%] Test mode: skipping Caddy setup >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Skipping Caddy (test mode)'"
+    powershell -Command "Write-Host '  [7/9] ' -NoNewline; %PS_GREEN% 'Skipping Caddy (test mode)'"
     goto SKIP_CADDY_SETUP
 )
+
+rem Build Caddyfile with all hostnames
+set "HTTPS_HOSTS=https://!HOSTNAME!"
+set "HTTP_HOSTS=http://!HOSTNAME!"
+
+rem Add extra hostnames to Caddy config
+if not "!EXTRA_HOSTNAMES!"=="" (
+    for %%h in (!EXTRA_HOSTNAMES!) do (
+        set "EH=%%h"
+        set "EH=!EH: =!"
+        if not "!EH!"=="" (
+            set "HTTPS_HOSTS=!HTTPS_HOSTS!, https://!EH!"
+            set "HTTP_HOSTS=!HTTP_HOSTS!, http://!EH!"
+        )
+    )
+)
+
+rem Add LAN IP
+set "HTTPS_HOSTS=!HTTPS_HOSTS!, https://!LOCAL_IP!"
+set "HTTP_HOSTS=!HTTP_HOSTS!, http://!LOCAL_IP!"
 
 (
     echo {
     echo     auto_https disable_redirects
     echo }
     echo.
-    echo https://!HOSTNAME! {
+    echo !HTTPS_HOSTS! {
     echo     tls internal
     echo     reverse_proxy localhost:!PORT!
     echo }
     echo.
-    echo http://!HOSTNAME! {
+    echo !HTTP_HOSTS! {
     echo     reverse_proxy localhost:!PORT!
     echo }
     echo.
@@ -435,7 +669,7 @@ if "%TEST_MODE%"=="1" (
     echo     reverse_proxy localhost:!PORT!
     echo }
 ) > Caddyfile
-powershell -Command "Write-Host '  [6/8] ' -NoNewline; %PS_GREEN% 'Caddyfile generated'"
+powershell -Command "Write-Host '  [7/9] ' -NoNewline; %PS_GREEN% 'Caddyfile generated'"
 
 :SKIP_CADDY_SETUP
 
@@ -446,11 +680,11 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 rem 8. Trust Caddy certificate (with error handling) - skip in test mode
 if "%TEST_MODE%"=="1" (
     echo [%date% %time%] Test mode: skipping certificate trust >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [7/8] ' -NoNewline; %PS_GREEN% 'Skipping certificate trust (test mode)'"
+    powershell -Command "Write-Host '  [8/9] ' -NoNewline; %PS_GREEN% 'Skipping certificate trust (test mode)'"
     goto SKIP_CERT_TRUST
 )
 
-powershell -Command "Write-Host '  [7/8] ' -NoNewline; %PS_YELLOW% 'Trusting SSL certificate...' -NoNewline"
+powershell -Command "Write-Host '  [8/9] ' -NoNewline; %PS_YELLOW% 'Trusting SSL certificate...' -NoNewline"
 if not exist "caddy.exe" (
     powershell -Command "%PS_RED% ' FAILED (caddy.exe not found)'"
     pause
@@ -468,9 +702,9 @@ if %errorLevel% NEQ 0 (
 rem 9. Start Node Server
 if "%TEST_MODE%"=="1" (
     echo [%date% %time%] Test mode: starting Node server only >> "%DEBUG_LOG%"
-    powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting Node server (test mode)...' -NoNewline"
+    powershell -Command "Write-Host '  [9/9] ' -NoNewline; %PS_YELLOW% 'Starting Node server (test mode)...' -NoNewline"
 ) else (
-    powershell -Command "Write-Host '  [8/8] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
+    powershell -Command "Write-Host '  [9/9] ' -NoNewline; %PS_YELLOW% 'Starting servers...' -NoNewline"
 )
 set "NODE_LOG=%LOG_DIR%\node_server.log"
 start /B cmd /c "set PORT=!PORT! && set CUSTOM_HOST=!HOSTNAME! && node clone.js serve > "%NODE_LOG%" 2>&1"
@@ -496,6 +730,14 @@ timeout /t 2 /nobreak >nul
 for /f "tokens=2" %%a in ('tasklist /fi "imagename eq caddy.exe" /fo list ^| findstr "PID"') do (
     set "CADDY_PID=%%a"
 )
+
+rem 10.5. Start DNS Server (for network-wide custom URL access)
+powershell -Command "Write-Host '  [+] ' -NoNewline -ForegroundColor Cyan; Write-Host 'Starting DNS server for network access...' -NoNewline -ForegroundColor Yellow"
+set "DNS_LOG=%LOG_DIR%\dns_server.log"
+set "DNS_PORT=53"
+start /B cmd /c "set SERVER_IP=!LOCAL_IP! && set CUSTOM_HOST=!HOSTNAME! && set DNS_PORT=53 && node scripts\dns-server.js > "%DNS_LOG%" 2>&1"
+timeout /t 1 /nobreak >nul
+powershell -Command "Write-Host ' Started' -ForegroundColor Green"
 
 rem 11. Start Guardian Process (monitors this script and kills children on exit)
 set "GUARDIAN_SCRIPT=%LOG_DIR%\guardian.ps1"
@@ -556,38 +798,93 @@ echo.
 powershell -Command "%PS_GREEN% '  ✓ SERVER IS RUNNING'"
 echo.
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
-powershell -Command "%PS_CYAN% '   ACCESS URLS'"
+powershell -Command "%PS_CYAN% '   🖥️  THIS COMPUTER'"
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 echo.
-powershell -Command "Write-Host '   🌐 Main Display:  ' -NoNewline; %PS_GREEN% 'https://!HOSTNAME!'"
-powershell -Command "Write-Host '   🌐 HTTP Access:   ' -NoNewline; Write-Host 'http://!HOSTNAME!' -ForegroundColor White"
+powershell -Command "Write-Host '   Main URL:    ' -NoNewline; %PS_GREEN% 'https://!HOSTNAME!'"
+powershell -Command "Write-Host '   HTTP:        ' -NoNewline; Write-Host 'http://!HOSTNAME!' -ForegroundColor White"
 echo.
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
-powershell -Command "%PS_CYAN% '   📱 REMOTE CONTROL (open on your phone)'"
+powershell -Command "%PS_CYAN% '   📱 OTHER DEVICES ON YOUR NETWORK'"
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 echo.
-powershell -Command "Write-Host '   📱 Remote URL:    ' -NoNewline; %PS_YELLOW% 'http://%LOCAL_IP%:%PORT%/remote'"
+powershell -Command "Write-Host '   Direct IP:   ' -NoNewline; %PS_GREEN% 'https://%LOCAL_IP%'"
+powershell -Command "Write-Host '   HTTP:        ' -NoNewline; Write-Host 'http://%LOCAL_IP%' -ForegroundColor White"
+powershell -Command "Write-Host '   Remote:      ' -NoNewline; %PS_YELLOW% 'http://%LOCAL_IP%:%PORT%/remote'"
+echo.
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+powershell -Command "%PS_CYAN% '   🌐 USE CUSTOM URL ON MOBILE (ONE-TIME SETUP)'"
+powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
+echo.
+powershell -Command "%PS_GREEN% '   ✓ DNS Server is running automatically!'"
+echo.
+powershell -Command "Write-Host '   To use ' -NoNewline; Write-Host 'http://!HOSTNAME!' -NoNewline -ForegroundColor Green; Write-Host ' on your phone:'"
+echo.
+powershell -Command "Write-Host '   1. Open WiFi settings on your phone' -ForegroundColor White"
+powershell -Command "Write-Host '   2. Tap your WiFi network → Advanced/Configure' -ForegroundColor White"
+powershell -Command "Write-Host '   3. Change DNS to: ' -NoNewline -ForegroundColor White; Write-Host '%LOCAL_IP%' -ForegroundColor Yellow"
+powershell -Command "Write-Host '   4. Save and access: ' -NoNewline -ForegroundColor White; Write-Host 'http://!HOSTNAME!' -ForegroundColor Green"
 echo.
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 powershell -Command "%PS_CYAN% '   ⚙️  SERVER INFO'"
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 echo.
-powershell -Command "Write-Host '   Port:     ' -NoNewline; Write-Host '%PORT%' -ForegroundColor White"
-powershell -Command "Write-Host '   Local IP: ' -NoNewline; Write-Host '%LOCAL_IP%' -ForegroundColor White"
-powershell -Command "Write-Host '   Logs:     ' -NoNewline; Write-Host '%LOG_DIR%\' -ForegroundColor White"
+powershell -Command "Write-Host '   Port:       ' -NoNewline; Write-Host '%PORT%' -ForegroundColor White"
+powershell -Command "Write-Host '   Local IP:   ' -NoNewline; Write-Host '%LOCAL_IP%' -ForegroundColor White"
+powershell -Command "Write-Host '   Hostname:   ' -NoNewline; Write-Host '!HOSTNAME!' -ForegroundColor White"
+powershell -Command "Write-Host '   DNS Server: ' -NoNewline; Write-Host '%LOCAL_IP%:53' -ForegroundColor Green"
+powershell -Command "Write-Host '   Logs:       ' -NoNewline; Write-Host '%LOG_DIR%\' -ForegroundColor White"
 echo.
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
-powershell -Command "%PS_CYAN% '   HOW TO STOP'"
+powershell -Command "%PS_CYAN% '   COMMANDS'"
 powershell -Command "%PS_CYAN% '  ─────────────────────────────────────────────────────────'"
 echo.
-powershell -Command "Write-Host '   [Q] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Type Q + Enter to stop cleanly'"
-powershell -Command "Write-Host '   [X] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Close window (auto-cleanup enabled)'"
+powershell -Command "Write-Host '   [Q] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Quit and stop server'"
+powershell -Command "Write-Host '   [R] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Refresh this display'"
+powershell -Command "Write-Host '   [S] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Show QR codes for mobile access'"
+powershell -Command "Write-Host '   [N] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Network diagnostics'"
+powershell -Command "Write-Host '   [U] ' -NoNewline -ForegroundColor Yellow; Write-Host 'Check for updates'"
 echo.
 powershell -Command "%PS_CYAN% '  ═══════════════════════════════════════════════════════════'"
 echo.
 
-set /p "CHOICE=  Enter option (Q to quit): "
+set /p "CHOICE=  Enter option: "
 if /I "%CHOICE%"=="Q" goto CLEANUP
+if /I "%CHOICE%"=="R" goto WAIT_LOOP
+if /I "%CHOICE%"=="S" goto SHOW_QR
+if /I "%CHOICE%"=="N" goto SHOW_NETWORK_DIAG
+if /I "%CHOICE%"=="U" goto SHOW_UPDATE_CHECK
+goto WAIT_LOOP
+
+:SHOW_QR
+cls
+echo.
+powershell -Command "%PS_CYAN% '  ╔══════════════════════════════════════════════════════╗'"
+powershell -Command "%PS_CYAN% '  ║           📱 QR CODES FOR MOBILE ACCESS 📱           ║'"
+powershell -Command "%PS_CYAN% '  ╚══════════════════════════════════════════════════════╝'"
+echo.
+node scripts\qr-display.js --port=%PORT% --hostname=!HOSTNAME! --ip=%LOCAL_IP%
+echo.
+powershell -Command "%PS_YELLOW% '  Press any key to return to main menu...'"
+pause >nul
+goto WAIT_LOOP
+
+:SHOW_NETWORK_DIAG
+cls
+echo.
+node scripts\network-diagnostics.js --hostname=!HOSTNAME! --port=%PORT%
+echo.
+powershell -Command "%PS_YELLOW% '  Press any key to return to main menu...'"
+pause >nul
+goto WAIT_LOOP
+
+:SHOW_UPDATE_CHECK
+cls
+echo.
+node scripts\update-check.js
+echo.
+powershell -Command "%PS_YELLOW% '  Press any key to return to main menu...'"
+pause >nul
 goto WAIT_LOOP
 
 :CLEANUP
@@ -753,8 +1050,14 @@ powershell -Command "%PS_CYAN% '  📖 WHEEL OF NAMES - HELP'"
 echo.
 powershell -Command "%PS_YELLOW% '  USAGE:'"
 echo    start-wheel-server.bat           [Start interactive mode]
+echo    start-wheel-server.bat quick     [Quick start - use saved config]
+echo    start-wheel-server.bat tray      [System tray mode with auto-recovery]
+echo    start-wheel-server.bat silent    [Background mode with watchdog]
+echo    start-wheel-server.bat dns       [Start DNS server for network]
+echo    start-wheel-server.bat update    [Check for updates]
+echo    start-wheel-server.bat network   [Network diagnostics]
 echo    start-wheel-server.bat test      [Run automated tests]
-echo    start-wheel-server.bat --check   [Run diagnostic checks]
+echo    start-wheel-server.bat --check   [Run system checks]
 echo    start-wheel-server.bat --help    [Show this help]
 echo.
 powershell -Command "%PS_GREEN% '  ✨ NEW PC? JUST RUN THE SCRIPT!'"
@@ -764,6 +1067,23 @@ echo      • Caddy web server (~45MB)
 echo      • All npm dependencies
 echo.
 echo    Only interactive prompt: Custom domain name (default: wheel.local)
+echo.
+powershell -Command "%PS_YELLOW% '  📱 OTHER DEVICES ON YOUR NETWORK:'"
+echo    Method 1: Use IP directly
+echo       → Other devices can access via https://YOUR_IP
+echo.
+echo    Method 2: Setup custom URL on each device
+echo       → Copy setup-client.bat to the device
+echo       → Run: setup-client.bat SERVER_IP wheel.local
+echo.
+echo    Method 3: Run DNS server (automatic for all devices)
+echo       → Run: start-wheel-server.bat dns
+echo       → Set other devices' DNS to this computer's IP
+echo.
+powershell -Command "%PS_YELLOW% '  🚀 QUICK MODE:'"
+echo    After first run, use "quick" to skip prompts:
+echo       → start-wheel-server.bat quick
+echo    Settings are saved in config.json
 echo.
 powershell -Command "%PS_YELLOW% '  TROUBLESHOOTING:'"
 echo    ❌ Script closes immediately?
@@ -775,9 +1095,34 @@ echo.
 echo    ❌ Permission denied?
 echo       → Script requests admin privileges automatically
 echo.
-powershell -Command "%PS_YELLOW% '  DEBUG MODE:'"
-echo    set DEBUG_PAUSE=1
-echo    start-wheel-server.bat
+echo    ❌ Other devices can't connect?
+echo       → Firewall rules are auto-configured (ports 80, 443, 8080-8090)
+echo       → Try: start-wheel-server.bat dns
+echo.
+powershell -Command "%PS_YELLOW% '  🔲 SYSTEM TRAY MODE:'"
+echo    Minimize to tray with auto-recovery:
+echo       → start-wheel-server.bat tray
+echo    Double-click tray icon to open browser.
+echo    Right-click for menu options.
+echo.
+powershell -Command "%PS_YELLOW% '  📱 QR CODE ACCESS:'"
+echo    While server is running, press [S] to show QR codes
+echo    for easy mobile device access.
+echo.
+powershell -Command "%PS_YELLOW% '  🌐 MULTIPLE HOSTNAMES:'"
+echo    You can set up multiple domain aliases during setup.
+echo    Example: wheel.local, spin.local, raffle.local
+echo    All will point to the same wheel interface.
+echo.
+powershell -Command "%PS_YELLOW% '  🔄 UPDATE CHECK:'"
+echo    Check for new versions:
+echo       → start-wheel-server.bat update
+echo    Or press [U] while server is running.
+echo.
+powershell -Command "%PS_YELLOW% '  🔍 NETWORK DIAGNOSTICS:'"
+echo    Troubleshoot connectivity issues:
+echo       → start-wheel-server.bat network
+echo    Or press [N] while server is running.
 echo.
 powershell -Command "%PS_YELLOW% '  LOGS LOCATION:'"
 echo    Debug logs: logs\debug-*.log
@@ -792,6 +1137,61 @@ exit /b 0
 rem ============================================================
 rem SUBROUTINES
 rem ============================================================
+
+:ENSURE_NODE
+rem Ensures Node.js is available (system or portable), downloads if needed
+rem Also ensures npm dependencies are installed and Caddy is present
+where node >nul 2>&1
+if %errorLevel% EQU 0 goto :ENSURE_NODE_FOUND
+rem Check for portable node
+if exist "%PORTABLE_NODE_DIR%\node.exe" (
+    set "PATH=%~dp0%PORTABLE_NODE_DIR%;%PATH%"
+    goto :ENSURE_NODE_FOUND
+)
+rem Need to download Node.js
+echo   Node.js not found. Downloading portable version...
+call :download_nodejs
+if %errorLevel% NEQ 0 (
+    echo   ERROR: Failed to download Node.js
+    echo   Please install Node.js manually from https://nodejs.org
+    exit /b 1
+)
+set "PATH=%~dp0%PORTABLE_NODE_DIR%;%PATH%"
+
+:ENSURE_NODE_FOUND
+rem Check if dependencies are installed
+if not exist "node_modules" (
+    echo   Installing dependencies...
+    if exist "%PORTABLE_NODE_DIR%\npm.cmd" (
+        call "%PORTABLE_NODE_DIR%\npm.cmd" install
+    ) else (
+        call npm install
+    )
+    if !errorLevel! NEQ 0 (
+        echo   ERROR: Failed to install dependencies
+        exit /b 1
+    )
+)
+rem Check if Caddy is installed
+if not exist "caddy.exe" (
+    echo   Caddy not found. Downloading...
+    call :download_caddy
+    if !errorLevel! NEQ 0 (
+        echo   WARNING: Failed to download Caddy. HTTPS may not work.
+    )
+)
+rem Ensure Caddyfile exists (create basic one if missing)
+if not exist "Caddyfile" (
+    echo   Creating default Caddyfile...
+    echo { > Caddyfile
+    echo     auto_https disable_redirects >> Caddyfile
+    echo } >> Caddyfile
+    echo. >> Caddyfile
+    echo http://localhost:80 { >> Caddyfile
+    echo     reverse_proxy localhost:8080 >> Caddyfile
+    echo } >> Caddyfile
+)
+exit /b 0
 
 :wait_for_port
 rem Usage: call :wait_for_port PORT TIMEOUT_SECONDS

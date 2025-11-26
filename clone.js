@@ -678,7 +678,7 @@ async function startServer() {
     }
     if (safePath === '/won-expose-engine.js') {
       try {
-        const exposePath = path.join(__dirname, 'won-expose-engine.js');
+        const exposePath = path.join(__dirname, 'scripts', 'injectables', 'won-expose-engine.js');
         const script = fs.readFileSync(exposePath, 'utf8');
         res.writeHead(200, { 'Content-Type': 'application/javascript' });
         res.end(script);
@@ -690,7 +690,7 @@ async function startServer() {
     }
     if (safePath === '/won-spin.js') {
       try {
-        const spinPath = path.join(__dirname, 'won-spin.js');
+        const spinPath = path.join(__dirname, 'scripts', 'injectables', 'won-spin.js');
         const script = fs.readFileSync(spinPath, 'utf8');
         res.writeHead(200, { 'Content-Type': 'application/javascript' });
         res.end(script);
