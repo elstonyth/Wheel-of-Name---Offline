@@ -656,7 +656,19 @@ async function startServer() {
   }
   
   const server = http.createServer((req, res) => {
-    const safePath = decodeURIComponent(req.url.split('?')[0]);
+    const rawPath = decodeURIComponent(req.url.split('?')[0]);
+    // Security: Normalize and sanitize path to prevent directory traversal
+    const normalizedPath = path.posix.normalize(rawPath).replace(/^(\.\.[\/\\])+/, '');
+    const safePath = normalizedPath.startsWith('/') ? normalizedPath : '/' + normalizedPath;
+    
+    // Additional security check: ensure the resolved path stays within OUTPUT_DIR
+    const resolvedPath = path.resolve(OUTPUT_DIR, safePath.slice(1));
+    const outputDirResolved = path.resolve(OUTPUT_DIR);
+    if (!resolvedPath.startsWith(outputDirResolved)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('403 Forbidden - Path traversal detected');
+      return;
+    }
     
     // Offline stubs and API
     if (safePath.startsWith('/api/v2/client-settings')) {
